@@ -1,0 +1,29 @@
+# Secrets — never commit these. The WhatsApp session folder is a password too.
+.env
+.wwebjs_auth/
+
+# Private business data: customer conversations, the learned Q&A brain, chat
+# logs, saved media, LLM context, settings. Keep out of any repo; un-ignore
+# deliberately if you ever want a piece of it public.
+memory/
+media/
+logs/
+llm_context/
+
+# Local agent / review workspace files — never meant for the repo
+AGENTS.md
+IDEA.md
+Bot Reviews/
+
+# SQLite sidecars (WAL mode) — rebuilt automatically, never needed in git
+*.db-wal
+*.db-shm
+
+# Node
+node_modules/
+*.tmp
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store

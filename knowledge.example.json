@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "message": "what are your opening hours",
+      "reply": "We're open 10am to 8pm, Monday to Saturday. Closed on Friday for the weekly holiday."
+    },
+    {
+      "message": "do you deliver",
+      "reply": "Yes, we deliver inside the city for 60 taka. Delivery is free on orders over 2000 taka."
+    },
+    {
+      "message": "how can i pay",
+      "reply": "Cash on delivery, bKash, or Nagad. We call to confirm every order before it ships."
+    }
+  ]
+}
