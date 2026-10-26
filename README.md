@@ -7,6 +7,7 @@ It runs on your own machine, so your customer data stays local. WhatsApp Web is 
 ## What it does
 
 - Hybrid search over your Q&A: word overlap plus embeddings (all-MiniLM-L6-v2), so "how much for delivery" finds "delivery charge" even without shared keywords
+- Replies in the customer's language: English, Bengali, and Hindi, including the canned greetings and the I-don't-know fallback line
 - Local LLM fallback: when no stored answer scores high enough, the bot asks Qwen3-1.7B in LM Studio and replies with the answer capped at three sentences
 - Human review queue: every LLM answer goes to a queue. You approve or reject it from your own WhatsApp. The bot never promotes an LLM answer into the knowledge base on its own
 - Human-needed detection: three layers (keyword, context, semantic) catch the messages a bot shouldn't touch, like complaints, pricing disputes, or anything urgent
@@ -105,7 +106,7 @@ Send from the admin number, in any chat:
 npm test
 ```
 
-342 checks across nine suites, all offline. WhatsApp, the network, and the embedding model are stubbed, so the suite runs in seconds and never touches your real session or data files. It snapshots and restores everything it touches, so a test run leaves the project exactly as it found it.
+391 checks across ten suites, all offline. WhatsApp, the network, and the embedding model are stubbed, so the suite runs in seconds and never touches your real session or data files. It snapshots and restores everything it touches, so a test run leaves the project exactly as it found it.
 
 ## Project layout
 

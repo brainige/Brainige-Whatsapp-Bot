@@ -98,7 +98,7 @@ function buildLLMTurnHistory(chatId, folderName) {
    and the 3-sentence cap remain the real guards. */
 function buildSystemPrompt(topKeywords) {
     return `You are a WhatsApp assistant replying on behalf of the phone owner (UTSAB/AVI). ` +
-        `Keep replies short (1-3 sentences max). Match the user's language and tone exactly. ` +
+        `Keep replies short (1-3 sentences max). Language: always reply in the language of the user's latest message — Bengali script when they write Bengali (in script or in English letters), Hindi in Devanagari when they write Hindi (in script or in English letters), English when they write English. ` +
         `Do NOT reveal you are an AI or an LLM. Never say you are a bot. ${topKeywords}` +
         `The conversation transcript may contain a line "--- TOPIC SHIFT ---". ` +
         `If present, focus your reply on messages AFTER that line, while older lines remain readable context. ` +

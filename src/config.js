@@ -53,7 +53,9 @@ const KB_FULL_SCAN_MAX  = 400               // ≤ this many entries → EVERY e
 const KB_CANDIDATE_POOL = 200               // bigger brain → meaning-math runs only on the top N word-index candidates
 const MEDIA_MAX_BYTES   = 20 * 1024 * 1024  // media over 20MB is logged but never downloaded/saved
 const EMBED_CACHE_MAX   = 25000            // embedding-CACHE cap (~38MB worst case). knowledge.json itself is NEVER capped.
-const LLM_DONT_KNOW     = "I don't know. You'll need to contact Utsab."   // the ONLY allowed unsure-fallback reply
+const LLM_DONT_KNOW     = "I don't know. You'll need to contact Utsab."   // the ONLY allowed unsure-fallback reply (English)
+const LLM_DONT_KNOW_BN  = "আমি জানি না। উৎসব-এর সাথে যোগাযোগ করুন।"   // the same line in Bengali, sent when the customer writes Bengali
+const LLM_DONT_KNOW_HI  = "मुझे नहीं पता। आपको उत्सब से संपर्क करना होगा।"   // the same line in Hindi, sent when the customer writes Hindi
 
 /* ── Reply-matching tunables — every number in ONE place ──
    These were previously hard-coded at their usage sites. Pure renames:
@@ -463,7 +465,7 @@ module.exports = {
     LEARN_DIRECT_MIN_COSINE, LEARN_DIRECT_MIN_SHARED_WORDS, EMBED_TEXT_MAX_CHARS,
     FLUSH_INTERVAL_MS, PROCESSED_ID_MAX_AGE_MS, PROCESSED_ID_HARD_CAP, PROCESSED_ID_COMPACT_AT,
     RECONNECT_MAX_RETRIES, RECONNECT_BASE_DELAY_MS, DESTROY_TIMEOUT_MS, READY_WATCHDOG_MS,
-    KB_FULL_SCAN_MAX, KB_CANDIDATE_POOL, MEDIA_MAX_BYTES, EMBED_CACHE_MAX, LLM_DONT_KNOW,
+    KB_FULL_SCAN_MAX, KB_CANDIDATE_POOL, MEDIA_MAX_BYTES, EMBED_CACHE_MAX, LLM_DONT_KNOW, LLM_DONT_KNOW_BN, LLM_DONT_KNOW_HI,
     SEARCH_LEX_COSINE_WEIGHT, SEARCH_LEX_JACCARD_WEIGHT, SEARCH_LEN_NORM_BASE, SEARCH_LEN_NORM_RATIO,
     SEARCH_HYBRID_SEM_WEIGHT, SEARCH_HYBRID_LEX_WEIGHT, SEARCH_CONTEXT_LEX_BOOST, SEARCH_CONTEXT_SEM_BOOST,
     SEARCH_MARGIN_MIN, SEARCH_MARGIN_PENALTY, FUSE_HYBRID_WEIGHT, FUSE_INTENT_WEIGHT,

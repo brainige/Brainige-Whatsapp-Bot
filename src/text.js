@@ -198,11 +198,11 @@ function detectIntent(msg) {
 
     const rules = [
         {
-            test: s => /\b(hello|hi+|hey+|yo+|hii+|sup|greetings|good morning|good night|good afternoon|good evening|howdy|what's up|wassup|how are you|hu+|hy|hlo|hlw)\b/.test(s),
+            test: s => /\b(hello|hi+|hey+|yo+|hii+|sup|greetings|good morning|good night|good afternoon|good evening|howdy|what's up|wassup|how are you|hu+|hy|hlo|hlw|kemon acho|kemon achen|assalamu)\b|নমস্কার|সুপ্রভাত|হ্যালো|আসসালামু|কেমন আছ|নমস্তে|नमस्ते|नमस्कार|सुप्रभात|हैलो|कैसे हो|कैसे हैं|कैसी हो/.test(s),
             intent: "greeting"
         },
         {
-            test: s => /\b(sorry|apologize|apologies|my bad|forgive me|pardon|excuse me|i was wrong|i apologize|my mistake|my fault)\b/.test(s),
+            test: s => /\b(sorry|apologize|apologies|my bad|forgive me|pardon|excuse me|i was wrong|i apologize|my mistake|my fault|maaf koro|maaf karna|maaf chai|kshama)\b|দুঃখিত|মাফ চাই|ক্ষমা|माफ़|माफ|क्षमा/.test(s),
             intent: "apology"
         },
         {
@@ -214,11 +214,11 @@ function detectIntent(msg) {
             intent: "emotional"
         },
         {
-            test: s => /\b(thanks|thank you|thank|ty|thx|thnks|thnku|thanku|thankss|tysm|tyvm|thankful|grateful|appreciated)\b/.test(s),
+            test: s => /\b(thanks|thank you|thank|ty|thx|thnks|thnku|thanku|thankss|tysm|tyvm|thankful|grateful|appreciated|dhonnobad|dhanyobad|dhanyabad|dhanyawad|shukriya|sukriya)\b|ধন্যবাদ|धन्यवाद/.test(s),
             intent: "thanks"
         },
         {
-            test: s => /\b(bye|goodbye|ciao|see you|later|good night|gotta go|gtg|ttyl|take care|byebye|bbye|see ya|laters)\b/.test(s),
+            test: s => /\b(bye|goodbye|ciao|see you|later|good night|gotta go|gtg|ttyl|take care|byebye|bbye|see ya|laters|alvida|biday)\b|বিদায়|अलविदा/.test(s),
             intent: "bye"
         },
         {
@@ -269,10 +269,35 @@ function isQuestionLike(text) {
     return false
 }
 
+/* ── language detection for native replies ──
+   A script test first: one Bengali or Devanagari character is decisive, and
+   if both scripts appear the majority wins. Otherwise a distinctive-word
+   scan catches customers who type Bangla/Hindi in English letters. English
+   is the safe default when nothing matches, so English customers never see
+   a translated line by mistake. */
+const BENGALI_SCRIPT = /[\u0980-\u09FF]/
+const DEVANAGARI_SCRIPT = /[\u0900-\u097F]/
+const ROMANIZED_BN = /\b(kemon|kivabe|kibhabe|kothay|kothai|kobe|keno|naki|ektu|onek|tahole|othoba|jodi|tumi|apni|bhalo|kharap|dhonnobad|maaf)\b/gi
+const ROMANIZED_HI = /\b(kya|kab|kaise|kahan|kyun|kaun|nahi|haan|bahut|bohot|zyada|matlab|lekin|agar|phir|kuch|isliye|kyunki|aap|hoga|mujhe|mera|dhanyawad|shukriya)\b/gi
+
+function detectLanguage(msg) {
+    const text = String(msg || "")
+    if (BENGALI_SCRIPT.test(text) || DEVANAGARI_SCRIPT.test(text)) {
+        const bn = (text.match(/[\u0980-\u09FF]/g) || []).length
+        const hi = (text.match(/[\u0900-\u097F]/g) || []).length
+        return hi > bn ? "hi" : "bn"
+    }
+    const bnHits = (text.match(ROMANIZED_BN) || []).length
+    const hiHits = (text.match(ROMANIZED_HI) || []).length
+    if (bnHits > hiHits) return "bn"
+    if (hiHits > bnHits) return "hi"
+    return "en"
+}
+
 module.exports = {
     TYPO_MAP, applyTypoMap, extractEmojis, detectEmojiSentiment, hasCurrencySymbol,
     canonicalize, normalize, cleanText, tokenize,
     buildVector, cosineLexical, jaccardSim, jaccardSimFromSets, cosineEmbedding,
     embeddingToBuffer, bufferToEmbedding, isNearDuplicate, detectIntent,
-    isQuestionLike
+    isQuestionLike, detectLanguage
 }

@@ -10,10 +10,10 @@
 const fs = require("fs-extra")
 const path = require("path")
 
-const { PATHS, MEDIA_MAX_BYTES, LLM_DONT_KNOW,
+const { PATHS, MEDIA_MAX_BYTES, LLM_DONT_KNOW, LLM_DONT_KNOW_BN, LLM_DONT_KNOW_HI,
     GROUP_CONFIDENCE_THRESHOLD, THRESHOLD_HIGH, THRESHOLD_MEDIUM } = require("./config")   // the decision thresholds now come from config (they existed there but were never used before)
 const state = require("./state")
-const { normalize, detectIntent, isQuestionLike } = require("./text")
+const { normalize, detectIntent, isQuestionLike, detectLanguage } = require("./text")
 const { getNumber, debugMode, dryRunMode, quietMode, getMediaSizeBytes, downloadedMediaBytes } = require("./util")
 const { findBestReply, fuseConfidence, learn, bumpKnowledgeHit } = require("./knowledge")
 const { needsHumanFull } = require("./humanNeeded")
@@ -68,11 +68,59 @@ const QUICK_REPLY_POOL = {
     bye: ["Take care! 👋", "Goodbye! UTSAB/AVI will catch you later.", "Bye! Talk soon 😊"]
 }
 
-function getQuickReply(intentResult, hasCtx) {
+/* The same canned replies in Bengali and Hindi, served to customers who write
+   in either language. Same keys as the English pool, so the picker falls back
+   per-intent if a translation is ever missing. */
+const QUICK_REPLY_POOL_BN = {
+    greeting: [
+        "হ্যালো! 👋 উৎসব/আভি এখন একটু ব্যস্ত আছে। কী বলতে চান?",
+        "আসসালামু আলাইকুম! উৎসব/আভি শীঘ্রই যোগাযোগ করবে। আপনার কী দরকার?",
+        "হ্যালো 😊 উৎসব/আভি না থাকলেও আমি সাহায্য করতে পারি!"
+    ],
+    apology: [
+        "ক্ষমা চাওয়ার জন্য ধন্যবাদ। উৎসব/আভি নিজে দেখভাল করবে।",
+        "ঠিক আছে, চিন্তা করবেন না — উৎসব/আভি শীঘ্রই কথা বলবে।"
+    ],
+    angry: [
+        "শান্ত হোন, উৎসব/আভি নিজে এটা সামলাবে। 🤝",
+        "আপনার কথা শুনছি। উৎসব/আভি শীঘ্রই যোগাযোগ করবে।"
+    ],
+    emotional: [
+        "খারাপ সময় পার হবে 💙 উৎসব/আভি শীঘ্রই কথা বলবে।",
+        "আপনার কথা বুঝতে পারছি। উৎসব/আভি পাশে আছে।"
+    ],
+    thanks: ["আপনাকেও ধন্যবাদ! 😊", "স্বাগতম! আবার যোগাযোগ করবেন।", "কোনো সমস্যা নেই! 👍"],
+    bye: ["ভালো থাকবেন! 👋", "আবার কথা হবে! উৎসব/আভি শীঘ্রই যোগাযোগ করবে।", "আসি! 😊"]
+}
+
+const QUICK_REPLY_POOL_HI = {
+    greeting: [
+        "नमस्ते! 👋 उत्सब/अवि इस समय थोड़े व्यस्त हैं। आपको क्या चाहिए?",
+        "हैलो! उत्सब/अवि जल्द ही आपसे संपर्क करेंगे। बताइए, आपको क्या चाहिए?",
+        "हैलो 😊 उत्सब/अवि न हों तब भी मैं मदद कर सकता हूँ!"
+    ],
+    apology: [
+        "माफ़ी की बात के लिए धन्यवाद। उत्सब/अवि खुद देखभाल करेंगे।",
+        "ठीक है, चिंता मत कीजिए — उत्सब/अवि जल्द बात करेंगे।"
+    ],
+    angry: [
+        "शांत रहिए, उत्सब/अवि खुद इसे संभालेंगे। 🤝",
+        "आपकी बात सुन रहा हूँ। उत्सब/अवि जल्द संपर्क करेंगे।"
+    ],
+    emotional: [
+        "मुश्किल समय होता है 💙 उत्सब/अवि जल्द बात करेंगे।",
+        "आपकी बात समझ रहा हूँ। उत्सब/अवि आपके साथ हैं।"
+    ],
+    thanks: ["आपका भी धन्यवाद! 😊", "स्वागत है! फिर संपर्क करेंगे।", "कोई बात नहीं! 👍"],
+    bye: ["अलविदा! 👋", "फिर बात होगी! उत्सब/अवि जल्द संपर्क करेंगे।", "जाता हूँ, फिर बात करेंगे! 😊"]
+}
+
+function getQuickReply(intentResult, hasCtx, lang) {
     const { intent, confidence } = intentResult
     if (confidence !== "high") return null
     if (intent === "greeting" && hasCtx) return null
-    const pool = QUICK_REPLY_POOL[intent]
+    const langPool = lang === "bn" ? QUICK_REPLY_POOL_BN : lang === "hi" ? QUICK_REPLY_POOL_HI : null
+    const pool = (langPool && langPool[intent]) || QUICK_REPLY_POOL[intent]
     if (!pool) return null
     return pool[Math.floor(Math.random() * pool.length)]
 }
@@ -106,13 +154,14 @@ function applyVariation(reply, uses) {
     return reply
 }
 
-function composePersonalizedReply(reply, profile, uses) {
+function composePersonalizedReply(reply, profile, uses, lang) {
     let out = reply
     if (profile && profile.isSad) {
         const lower = out.toLowerCase()
-        const alreadyEmpathetic = /^(hey,? hope|sorry to hear|oh,?|take care|bura mat|mon kharap|arey yaar)/.test(lower)
+        const alreadyEmpathetic = /^(hey,? hope|sorry to hear|oh,?|take care|bura mat|mon kharap|arey yaar|আশা করি ভালো আছেন|উম্মীদ है आप ठीक)/.test(lower)
         if (!alreadyEmpathetic) {
-            out = "Hey, hope you're doing okay. " + out
+            const empathyPrefix = lang === "bn" ? "আশা করি ভালো আছেন। " : lang === "hi" ? "उम्मीद है आप ठीक हैं। " : "Hey, hope you're doing okay. "
+            out = empathyPrefix + out
         }
     }
     if (profile && profile.isAngry) out = softenAssertiveLanguage(out)
@@ -124,8 +173,8 @@ function composePersonalizedReply(reply, profile, uses) {
    punctuation drift, since the model may not echo the line byte-perfectly)
    so it can be replied to the contact but never learned. */
 function isDontKnowReply(text) {
-    const norm = s => String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/[.!]+$/g, "").trim()
-    return norm(text) === norm(LLM_DONT_KNOW)
+    const norm = s => String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/[.!।]+$/g, "").trim()
+    return [LLM_DONT_KNOW, LLM_DONT_KNOW_BN, LLM_DONT_KNOW_HI].some(line => norm(text) === norm(line))
 }
 
 /* ── decision engine ── */
@@ -516,6 +565,11 @@ async function onMessage(message) {
             return null
         }
 
+        // Detect the customer's language once per message: the canned replies
+        // and the unsure-fallback line ship in that language. English is the
+        // default, so existing behavior is untouched for English customers.
+        const lang = detectLanguage(rawBody)
+
         switch (decision.action) {
 
             case DECISION.HUMAN_NEEDED: {
@@ -525,12 +579,12 @@ async function onMessage(message) {
             }
 
             case DECISION.REPLY_QUICK: {
-                const quickText = getQuickReply(intentResult, activeCtx)
+                const quickText = getQuickReply(intentResult, activeCtx, lang)
                 if (quickText) {
                     await sendOrDryRun(`QUICK REPLY : ${quickText}`, { onSent: () => bumpDigest("quickReplies") })
                 } else if (matchResult.reply &&
                     fuseConfidence(matchResult.hybridScore, intentResult.intentWeight) >= THRESHOLD_MEDIUM) {   // F2
-                    const personalized = composePersonalizedReply(matchResult.reply, profile, matchResult.uses)
+                    const personalized = composePersonalizedReply(matchResult.reply, profile, matchResult.uses, lang)
                     await sendOrDryRun(`QUICK REPLY : ${personalized}`, { onSent: () => { bumpDigest("kbReplies"); bumpKnowledgeHit(matchResult.id) } })
                 }
                 break
@@ -539,7 +593,7 @@ async function onMessage(message) {
             case DECISION.REPLY_KNOW: {
                 const { reply } = matchResult
                 if (reply) {
-                    const personalized = composePersonalizedReply(reply, profile, matchResult.uses)
+                    const personalized = composePersonalizedReply(reply, profile, matchResult.uses, lang)
                     await sendOrDryRun(`QUICK REPLY : ${personalized}`, { onSent: () => { bumpDigest("kbReplies"); bumpKnowledgeHit(matchResult.id) } })
                 } else {
                     logHumanNeeded(user, rawBody, "score ok but no reply object")
@@ -559,7 +613,12 @@ async function onMessage(message) {
                     // The learn() pairing + digest only fire when the reply
                     // really goes out (send-guard onSent) — a queued or dropped reply
                     // must never pair with a message it never actually answered.
-                    await sendOrDryRun(`QUICK REPLY : ${llmResult.text}`, {
+                    // The unsure-fallback line ships in the customer's own language;
+                    // the model is only asked for the English wording.
+                    const outText = (lang !== "en" && isDontKnowReply(llmResult.text))
+                        ? (lang === "bn" ? LLM_DONT_KNOW_BN : LLM_DONT_KNOW_HI)
+                        : llmResult.text
+                    await sendOrDryRun(`QUICK REPLY : ${outText}`, {
                         onSent: () => {
                             bumpDigest("llmReplies")
                             // The unsure-fallback line is NOT knowledge — reply to
@@ -572,7 +631,7 @@ async function onMessage(message) {
                 } else {
                     const finalScore = fuseConfidence(matchResult.hybridScore, intentResult.intentWeight)
                     if (finalScore >= THRESHOLD_MEDIUM && (activeCtx || intent === "help" || intent === "question") && matchResult.reply) {   // F2
-                        const personalized = composePersonalizedReply(matchResult.reply, profile, matchResult.uses)
+                        const personalized = composePersonalizedReply(matchResult.reply, profile, matchResult.uses, lang)
                         await sendOrDryRun(`QUICK REPLY : ${personalized}`)
                         bumpDigest("kbReplies")
                         bumpKnowledgeHit(matchResult.id)
@@ -592,4 +651,4 @@ async function onMessage(message) {
     }
 }
 
-module.exports = { onMessage, decide, DECISION, getQuickReply, composePersonalizedReply, shouldProcessGroupMessage, isGroupLearnEnabled, QUICK_REPLY_POOL, isDontKnowReply }
+module.exports = { onMessage, decide, DECISION, getQuickReply, composePersonalizedReply, shouldProcessGroupMessage, isGroupLearnEnabled, QUICK_REPLY_POOL, QUICK_REPLY_POOL_BN, QUICK_REPLY_POOL_HI, isDontKnowReply }

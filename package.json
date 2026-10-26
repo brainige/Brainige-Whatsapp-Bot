@@ -9,13 +9,14 @@
   },
   "scripts": {
     "start": "node bot.js",
-    "test": "node test/smoke_test.js && node test/boot_test.js && node test/handler_test.js && node test/workflow_test.js && node test/reliability_test.js && node test/core_test.js && node test/scoring_test.js && node test/hardening_test.js && node test/sendguard_test.js && node test/efficiency_test.js",
+    "test": "node test/smoke_test.js && node test/boot_test.js && node test/handler_test.js && node test/workflow_test.js && node test/reliability_test.js && node test/core_test.js && node test/scoring_test.js && node test/hardening_test.js && node test/sendguard_test.js && node test/efficiency_test.js && node test/language_test.js",
     "test:reliability": "node test/reliability_test.js",
     "test:core": "node test/core_test.js",
     "test:scoring": "node test/scoring_test.js",
     "test:hardening": "node test/hardening_test.js",
     "test:sendguard": "node test/sendguard_test.js",
-    "test:efficiency": "node test/efficiency_test.js"
+    "test:efficiency": "node test/efficiency_test.js",
+    "test:language": "node test/language_test.js"
   },
   "dependencies": {
     "axios": "^1.7.0",
