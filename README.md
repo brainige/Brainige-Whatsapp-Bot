@@ -1,6 +1,6 @@
 # Brainige WhatsApp Bot
 
-Brainige is the auto-reply bot I built for my business WhatsApp. It answers customer questions from a knowledge base you edit by hand. When the base doesn't have an answer, it asks a local LLM and replies with that. Nothing the LLM says enters the knowledge base until you've approved it yourself.
+This is the auto-reply bot I built for my business WhatsApp and normal WhatsApp. It answers customer questions from a knowledge base you edit by hand. When the base doesn't have an answer, it asks a local LLM and replies with that. Nothing the LLM says enters the knowledge base until you've approved it yourself.
 
 It runs on your own machine, so your customer data stays local. WhatsApp Web is driven through headless Chrome, and the LLM runs in LM Studio. The only outside call is the optional VirusTotal link check.
 
@@ -14,6 +14,9 @@ It runs on your own machine, so your customer data stays local. WhatsApp Web is 
 - Link safety: every link in a message is checked against VirusTotal and written to a local ledger. Customers never see the check. You get the flags, plus an immediate alert for malicious links
 - Send pacing: a minimum gap between sends, an hourly cap, and suppression of identical replies, so a busy hour doesn't look like spam to WhatsApp
 - Name-triggered pause: a customer writing your name (see `PAUSE_NAMES` below) pauses auto-replies for that chat, so you can step in yourself
+- Owner handoff: when you reply to a customer from your own phone, the bot stands down for that chat for 30 minutes so you can take the thread. Logging and learning keep running, and each reply from you pushes the stand-down further out
+- Send media: `!sendmedia` pushes a file (price list, catalog, sticker) into a chat, through the same size cap and logging as incoming media
+- Miss log: every question the bot could not answer is recorded, so `!misses` tells you exactly what to teach it next
 - Group support: whitelist the groups the bot may answer in, learn from your own replies in those groups, stay silent everywhere else
 - Daily digest at 21:00 covering replies sent, messages skipped, pairs queued for review, and send-guard events
 - Everything is logged locally: chats, errors, saved media, and the link ledger
@@ -84,6 +87,8 @@ Send these from your own WhatsApp number, in any chat:
 
 A pair only gets queued once. Duplicates of a pending question are ignored.
 
+When a backlog builds up: `!review 5` lists the next five pairs numbered 1-5, and `!approve 1-5` (or `!reject 1-5`, or a list like `1,3`) acts on exactly those. There is deliberately no "approve everything" — one wrong tap must never dump a hundred unreviewed pairs into the brain.
+
 ## Admin commands
 
 Send from the admin number, in any chat:
@@ -99,6 +104,9 @@ Send from the admin number, in any chat:
 | `!group_allow [id]` / `!group_block [id]` | Manage which groups the bot answers in |
 | `!learning on/off` | Toggle learning entirely |
 | `!export_kb` | Export the knowledge base |
+| `!review N` / `!approve 1-3` / `!reject 1-3` | Review and act on a numbered batch of queued pairs |
+| `!misses [N]` | The questions the bot could not answer, most frequent first |
+| `!sendmedia <jid> <path> [caption]` | Send a file to a chat. Replying to a customer's message with `!sendmedia <path> [caption]` sends it there |
 | `!backup` | Snapshot the state files |
 | `!stats` | Counters since the last restart |
 | `!quiet on/off` | Hide the per-message decision line in the terminal |
@@ -111,32 +119,32 @@ Send from the admin number, in any chat:
 npm test
 ```
 
-408 checks across ten suites, all offline. WhatsApp, the network, and the embedding model are stubbed, so the suite runs in seconds and never touches your real session or data files. It snapshots and restores everything it touches, so a test run leaves the project exactly as it found it.
+512 checks across fourteen suites, all offline. WhatsApp, the network, and the embedding model are stubbed, so the suite runs in seconds and never touches your real session or data files. It snapshots and restores everything it touches, so a test run leaves the project exactly as it found it.
 
 ## Project layout
 
 ```
-bot.js          entry point: client setup, boot order, graceful shutdown
+bot.js             entry point: client setup, boot order, graceful shutdown
 src/
-  config.js     every tunable number in one place
-  handler.js    message pipeline: intake, media, links, search, decision, send
-  knowledge.js  the base itself: rebuild, cache, search, learning gates
-  llm.js        LM Studio calls, watchdog, system prompt
-  security.js   URL extraction, VirusTotal, link ledger
-  sendGuard.js  send pacing, hourly cap, identical-text suppression
-  embeddings.js all-MiniLM-L6-v2 wrapper
-  humanNeeded.js  three-layer human-needed detection
-  memory.js     chat memory, retention sweeps, flush timer
-  admin.js      the self-chat command surface
-  ...           tracking, digest, notify, pause, reconnect, logging, db, text, state, util, embedCache
-test/           the nine suites plus stubs
+  config.js        every tunable number in one place
+  handler.js       message pipeline: intake, media, links, search, decision, send
+  knowledge.js     the base itself: rebuild, cache, search, learning gates
+  llm.js           LM Studio calls, watchdog, system prompt
+  security.js      URL extraction, VirusTotal, link ledger
+  sendGuard.js     send pacing, hourly cap, identical-text suppression
+  embeddings.js    all-MiniLM-L6-v2 wrapper
+  humanNeeded.js   three-layer human-needed detection
+  memory.js        chat memory, retention sweeps, flush timer
+  admin.js         the self-chat command surface
+  ...              tracking, digest, notify, pause, reconnect, logging, db, text, state, util, embedCache, handoff, mediaSend, misses
+test/              the fourteen suites plus stubs
 ```
 
 ## Notes and limits
 
 - The bot is only as good as your knowledge base plus a 1.7B model, and small models like that give generic answers sometimes. The review queue is the guard for exactly that.
-- Customer replies keep the `QUICK REPLY : ` prefix. That's a deliberate choice, not a bug.
-- `memory/`, `logs/`, `media/`, and `llm_context/` hold real customer data. They're gitignored and never leave your machine.
+- Customer replies keep the `QUICK REPLY : ` prefix. That's a deliberate choice as it helps me differentiate between the bot's reply and my replies to my clients and my friends, not a bug.
+- `memory/`, `logs/`, `media/`, and `llm_context/` hold data. When you start the bot, the bot creates everything so they're gitignored.
 - On Windows, if `better-sqlite3` won't load after install, run `npm rebuild better-sqlite3`. That's a native-module quirk, not a broken install.
 - The bot sends from a WhatsApp Web session, which is against WhatsApp's terms of the consumer app. Use a number you can afford to lose, and don't blast volume at it. The send guard helps, but the risk is yours.
 

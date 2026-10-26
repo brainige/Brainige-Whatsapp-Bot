@@ -8,15 +8,23 @@
    about a send is ever silent. */
 
 const fs = require("fs-extra")
-const { MessageMedia } = require("whatsapp-web.js")
 const { MEDIA_MAX_BYTES } = require("./config")
 const { logError } = require("./logging")
+
+/* The library is heavy (it pulls in Puppeteer), so it loads on first use
+   instead of at module load — code paths that never send a file never
+   pay for it, and nothing requires it just to boot. */
+let MessageMediaClass = null
+function getMediaClass() {
+    if (!MessageMediaClass) MessageMediaClass = require("whatsapp-web.js").MessageMedia
+    return MessageMediaClass
+}
 
 function buildMedia(filePath) {
     if (!filePath || !fs.existsSync(filePath)) {
         throw new Error(`file not found: ${filePath}`)
     }
-    return MessageMedia.fromFilePath(filePath)
+    return getMediaClass().fromFilePath(filePath)
 }
 
 function fmtBytes(n) {

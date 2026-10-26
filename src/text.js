@@ -198,27 +198,27 @@ function detectIntent(msg) {
 
     const rules = [
         {
-            test: s => /\b(hello|hi+|hey+|yo+|hii+|sup|greetings|good morning|good night|good afternoon|good evening|howdy|what's up|wassup|how are you|hu+|hy|hlo|hlw|kemon acho|kemon achen|assalamu)\b|নমস্কার|সুপ্রভাত|হ্যালো|আসসালামু|কেমন আছ|নমস্তে|नमस्ते|नमस्कार|सुप्रभात|हैलो|कैसे हो|कैसे हैं|कैसी हो/.test(s),
+            test: s => /\b(hello|hi+|hey+|yo+|hii+|sup|greetings|good morning|good night|good afternoon|good evening|howdy|what's up|wassup|how are you|hu+|hy|hlo|hlw|kemon acho|kemon achen|assalamu)\b|নমস্কার|সুপ্রভাত|হ্যালো|আসসালামু|কেমন আছ|নমস্তে|नमस्ते|नमस्कार|सुप्रभात|हैलो|हलो|हाय|कैसे हो|कैसे हैं|कैसी हो/.test(s),
             intent: "greeting"
         },
         {
-            test: s => /\b(sorry|apologize|apologies|my bad|forgive me|pardon|excuse me|i was wrong|i apologize|my mistake|my fault|maaf koro|maaf karna|maaf chai|kshama)\b|দুঃখিত|মাফ চাই|ক্ষমা|माफ़|माफ|क्षमा/.test(s),
+            test: s => /\b(sorry|apologize|apologies|my bad|forgive me|pardon|excuse me|i was wrong|i apologize|my mistake|my fault|maaf koro|maaf karna|maaf chai|kshama)\b|দুঃখিত|মাফ চাই|ক্ষমা|माफ़|माफ|क्षमा|सॉरी|सोरी/.test(s),
             intent: "apology"
         },
         {
-            test: s => /\b(angry|furious|frustrated|mad|upset|hate you|pissed|annoyed|irritated|livid|enraged|fed up|sick of|can't stand|pissed off)\b/.test(s),
+            test: s => /\b(angry|furious|frustrated|mad|upset|hate you|pissed|annoyed|irritated|livid|enraged|fed up|sick of|can't stand|pissed off)\b|नाराज़|गुस्सा|बकवास|बेकार|घटिया|धोखा|झूठ|फाल्तू/.test(s),
             intent: "angry"
         },
         {
-            test: s => /\b(sad|depressed|crying|hurt|heartbroken|pain|down|lonely|hopeless|worthless|miserable|devastated|broken|feel like dying|can't take it|feeling low|weeping)\b/.test(s),
+            test: s => /\b(sad|depressed|crying|hurt|heartbroken|pain|down|lonely|hopeless|worthless|miserable|devastated|broken|feel like dying|can't take it|feeling low|weeping)\b|दुख|दुखी|रो रह|तन्हा|अकेल|डिप्रेशन|दर्द/.test(s),
             intent: "emotional"
         },
         {
-            test: s => /\b(thanks|thank you|thank|ty|thx|thnks|thnku|thanku|thankss|tysm|tyvm|thankful|grateful|appreciated|dhonnobad|dhanyobad|dhanyabad|dhanyawad|shukriya|sukriya)\b|ধন্যবাদ|धन्यवाद/.test(s),
+            test: s => /\b(thanks|thank you|thank|ty|thx|thnks|thnku|thanku|thankss|tysm|tyvm|thankful|grateful|appreciated|dhonnobad|dhanyobad|dhanyabad|dhanyawad|shukriya|sukriya)\b|ধন্যবাদ|धन्यवाद|शुक्रिया|थैंक्स/.test(s),
             intent: "thanks"
         },
         {
-            test: s => /\b(bye|goodbye|ciao|see you|later|good night|gotta go|gtg|ttyl|take care|byebye|bbye|see ya|laters|alvida|biday)\b|বিদায়|अलविदा/.test(s),
+            test: s => /\b(bye|goodbye|ciao|see you|later|good night|gotta go|gtg|ttyl|take care|byebye|bbye|see ya|laters|alvida|biday)\b|বিদায়|अलविदा|टटा|बाय/.test(s),
             intent: "bye"
         },
         {
@@ -277,8 +277,8 @@ function isQuestionLike(text) {
    a translated line by mistake. */
 const BENGALI_SCRIPT = /[\u0980-\u09FF]/
 const DEVANAGARI_SCRIPT = /[\u0900-\u097F]/
-const ROMANIZED_BN = /\b(kemon|kivabe|kibhabe|kothay|kothai|kobe|keno|naki|ektu|onek|tahole|othoba|jodi|tumi|apni|bhalo|kharap|dhonnobad|maaf)\b/gi
-const ROMANIZED_HI = /\b(kya|kab|kaise|kahan|kyun|kaun|nahi|haan|bahut|bohot|zyada|matlab|lekin|agar|phir|kuch|isliye|kyunki|aap|hoga|mujhe|mera|dhanyawad|shukriya)\b/gi
+const ROMANIZED_BN = /\b(kemon|kivabe|kibhabe|kothay|kothai|kobe|kokhon|keno|naki|koto|valo|achi|jonno|ektu|onek|tahole|othoba|jodi|tumi|apni|bhalo|kharap|korbo|dhonnobad|maaf)\b/gi
+const ROMANIZED_HI = /\b(kya|kab|kaise|kahan|kyun|kaun|nahi|haan|bahut|bohot|zyada|matlab|lekin|agar|phir|kuch|isliye|kyunki|aap|hoga|mujhe|mera|dhanyawad|shukriya|hai|hain|chahiye|aapka|bhai|yaar)\b/gi
 
 function detectLanguage(msg) {
     const text = String(msg || "")

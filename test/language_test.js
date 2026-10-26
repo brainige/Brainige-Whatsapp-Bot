@@ -94,6 +94,12 @@ async function main() {
     check("Bengali apology detected", detectIntent("দুঃখিত, ভুল হয়ে গেছে").intent === "apology")
     check("alvida is a bye", detectIntent("alvida, take care").intent === "bye")
     check("English greeting still works", detectIntent("hello there").intent === "greeting")
+    check("Hindi-script anger detected", detectIntent("मैं बहुत नाराज़ हूँ").intent === "angry")
+    check("Hindi-script sadness detected", detectIntent("बहुत दुख हुआ").intent === "emotional")
+    check("Hindi casual bye detected", detectIntent("टटा, बाद में बात करते हैं").intent === "bye")
+    check("Hindi shukriya detected as thanks", detectIntent("शुक्रिया भाई").intent === "thanks")
+    check("Hindi halo detected as greeting", detectIntent("हलो जी").intent === "greeting")
+    check("Hindi sorry detected as apology", detectIntent("सॉरी यार").intent === "apology")
 
     console.log("\n── system prompt ──")
     const prompt = buildSystemPrompt("")
@@ -124,12 +130,14 @@ async function main() {
     check("low-confidence intents get no canned reply", handler.getQuickReply({ intent: "greeting", confidence: "medium" }, false, "bn") === null)
 
     console.log("\n── language-aware personalization ──")
-    check("sad profile gets a Bengali empathy prefix", handler.composePersonalizedReply("Delivery takes 3 days.", { isSad: true }, 0, "bn").startsWith("আশা করি ভালো আছেন।"))
+    check("sad profile gets a Bengali empathy prefix", handler.composePersonalizedReply("Delivery takes 3 days.", { isSad: true }, 0, "bn").startsWith("মন খারাপ লাগছে শুনে।"))
     check("sad profile gets a Hindi empathy prefix", handler.composePersonalizedReply("Delivery takes 3 days.", { isSad: true }, 0, "hi").startsWith("उम्मीद है आप ठीक हैं।"))
     check("sad profile keeps the English prefix for English", handler.composePersonalizedReply("Delivery takes 3 days.", { isSad: true }, 0, "en").startsWith("Hey, hope you're doing okay."))
     check("no profile means no prefix", handler.composePersonalizedReply("Delivery takes 3 days.", null, 0, "bn") === "Delivery takes 3 days.")
-    check("no double prefix when the reply is already empathetic",
-        handler.composePersonalizedReply("আশা করি ভালো আছেন। ঠিক আছে।", { isSad: true }, 0, "bn") === "আশা করি ভালো আছেন। ঠিক আছে।")
+    const bnOnce = handler.composePersonalizedReply("All good.", { isSad: true }, 0, "bn")
+    const hiOnce = handler.composePersonalizedReply("All good.", { isSad: true }, 0, "hi")
+    check("no double prefix in Bengali", handler.composePersonalizedReply(bnOnce, { isSad: true }, 0, "bn") === bnOnce)
+    check("no double prefix in Hindi", handler.composePersonalizedReply(hiOnce, { isSad: true }, 0, "hi") === hiOnce)
 
     console.log("\n── end to end: the fallback line ships in the customer's language ──")
     state.llmAvailable = true

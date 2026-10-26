@@ -2,9 +2,8 @@
 .env
 .wwebjs_auth/
 
-# Private business data: customer conversations, the learned Q&A brain, chat
+# Private business data: customer conversations, the learned Q&A brain, DM chat
 # logs, saved media, LLM context, settings. Keep out of any repo; un-ignore
-# deliberately if you ever want a piece of it public.
 memory/
 media/
 logs/
@@ -14,6 +13,13 @@ llm_context/
 AGENTS.md
 IDEA.md
 Bot Reviews/
+
+# Git worktrees used for parallel feature work
+.worktrees/
+
+# Old .env copies (real values — never commit)
+.env
+.env.backup*
 
 # SQLite sidecars (WAL mode) — rebuilt automatically, never needed in git
 *.db-wal

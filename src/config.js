@@ -66,7 +66,7 @@ const PAUSE_NAMES      = String(process.env.PAUSE_NAMES || "utsab,avi")
     .split(",").map(s => s.trim().toLowerCase()).filter(Boolean)
 
 const LLM_DONT_KNOW     = `I don't know. You'll need to contact ${OWNER_DISPLAY}.`   // the ONLY allowed unsure-fallback reply (English)
-const LLM_DONT_KNOW_BN  = `আমি জানি না। ${OWNER_DISPLAY_BN}-এর সাথে যোগাযোগ করুন।`   // the same line in Bengali, sent when the customer writes Bengali
+const LLM_DONT_KNOW_BN  = `আমি এটা জানি না। ${OWNER_DISPLAY_BN}-এর সাথে যোগাযোগ করুন।`   // the same line in Bengali, sent when the customer writes Bengali
 const LLM_DONT_KNOW_HI  = `मुझे नहीं पता। आपको ${OWNER_DISPLAY_HI} से संपर्क करना होगा।`   // the same line in Hindi, sent when the customer writes Hindi
 
 /* ── Reply-matching tunables — every number in ONE place ──

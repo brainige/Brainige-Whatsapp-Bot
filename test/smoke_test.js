@@ -12,9 +12,9 @@ const fs = require("fs-extra")
 const mod = require("module")
 const origResolve = mod._resolveFilename
 mod._resolveFilename = function (request, ...args) {
-    if (request === "whatsapp-web.js") return path.join(__dirname, "test", "stubs", "whatsapp-web.js")
-    if (request === "qrcode-terminal") return path.join(__dirname, "test", "stubs", "qrcode-terminal.js")
-    if (request === "@xenova/transformers") return path.join(__dirname, "test", "stubs", "transformers.js")
+    if (request === "whatsapp-web.js") return path.join(__dirname, "stubs", "whatsapp-web.js")
+    if (request === "qrcode-terminal") return path.join(__dirname, "stubs", "qrcode-terminal.js")
+    if (request === "@xenova/transformers") return path.join(__dirname, "stubs", "transformers.js")
     return origResolve.call(this, request, ...args)
 }
 

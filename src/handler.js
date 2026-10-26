@@ -11,7 +11,7 @@ const fs = require("fs-extra")
 const path = require("path")
 
 const { PATHS, MEDIA_MAX_BYTES, LLM_DONT_KNOW, LLM_DONT_KNOW_BN, LLM_DONT_KNOW_HI,
-    OWNER_DISPLAY, OWNER_DISPLAY_BN, OWNER_DISPLAY_HI,
+    OWNER_DISPLAY, OWNER_DISPLAY_BN, OWNER_DISPLAY_HI, HANDOFF_WINDOW_MS,
     GROUP_CONFIDENCE_THRESHOLD, THRESHOLD_HIGH, THRESHOLD_MEDIUM } = require("./config")   // the decision thresholds now come from config (they existed there but were never used before)
 const state = require("./state")
 const { normalize, detectIntent, isQuestionLike, detectLanguage } = require("./text")
@@ -24,14 +24,15 @@ const {
     appendLLMContext, markLLMContextTopicShift
 } = require("./memory")
 const { saveConversation } = require("./db")
-const { logIncoming, logBotReply, logOutgoing, logHumanNeeded, logAdminActivity, logError } = require("./logging")
+const { logIncoming, logBotReply, logOutgoing, logHumanNeeded, logAdminActivity, logError, logMiss } = require("./logging")
 const { markProcessed, preRegisterBotText, trackBotReply, isBotSentText, getLastMessage, setLastMessage } = require("./tracking")
 const { notifyAdmin, notifyAdminBatched } = require("./notify")
 const sendGuard = require("./sendGuard")
 const { extractURLs, stripURLs, checkURL, getContactName, appendLinkLedger, buildLinkEntry } = require("./security")
 const { callLLM } = require("./llm")
 const { checkAndTriggerPause, isUserPaused, isGloballyPaused, isInDND, getPauseDuration } = require("./pause")
-const { bumpDigest, bumpDigestMessage, bumpDigestPausedSkip, bumpDigestSendGuard, trackNewContact } = require("./digest")
+const { activateHandoff, isHandoffActive } = require("./handoff")
+const { bumpDigest, bumpDigestMessage, bumpDigestPausedSkip, bumpDigestSendGuard, bumpDigestHandoff, trackNewContact } = require("./digest")
 const { handleCommand } = require("./admin")
 
 /* Wire the send guard's drop events → digest counters + a batched admin
@@ -74,34 +75,34 @@ const QUICK_REPLY_POOL = {
    per-intent if a translation is ever missing. */
 const QUICK_REPLY_POOL_BN = {
     greeting: [
-        `হ্যালো! 👋 ${OWNER_DISPLAY_BN} এখন একটু ব্যস্ত আছে। কী বলতে চান?`,
-        `আসসালামু আলাইকুম! ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবে। আপনার কী দরকার?`,
+        `হ্যালো! 👋 ${OWNER_DISPLAY_BN} এখন একটু ব্যস্ত আছেন। কী বলতে চান?`,
+        `আসসালামু আলাইকুম! ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবেন। আপনার কী দরকার?`,
         `হ্যালো 😊 ${OWNER_DISPLAY_BN} না থাকলেও আমি সাহায্য করতে পারি!`
     ],
     apology: [
-        `ক্ষমা চাওয়ার জন্য ধন্যবাদ। ${OWNER_DISPLAY_BN} নিজে দেখভাল করবে।`,
-        `ঠিক আছে, চিন্তা করবেন না — ${OWNER_DISPLAY_BN} শীঘ্রই কথা বলবে।`
+        `ক্ষমা চাওয়ার জন্য ধন্যবাদ। ${OWNER_DISPLAY_BN} নিজে দেখভাল করবেন।`,
+        `ঠিক আছে, চিন্তা করবেন না — ${OWNER_DISPLAY_BN} শীঘ্রই কথা বলবেন।`
     ],
     angry: [
-        `শান্ত হোন, ${OWNER_DISPLAY_BN} নিজে এটা সামলাবে। 🤝`,
-        `আপনার কথা শুনছি। ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবে।`
+        `শান্ত হোন, ${OWNER_DISPLAY_BN} নিজেই এটা সামলাবেন। 🤝`,
+        `আপনার কথা শুনছি। ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবেন।`
     ],
     emotional: [
-        `খারাপ সময় পার হবে 💙 ${OWNER_DISPLAY_BN} শীঘ্রই কথা বলবে।`,
-        `আপনার কথা বুঝতে পারছি। ${OWNER_DISPLAY_BN} পাশে আছে।`
+        `কষ্ট হয় কখনো কখনো 💙 ${OWNER_DISPLAY_BN} শীঘ্রই কথা বলবেন।`,
+        `আপনার কথা বুঝতে পারছি। ${OWNER_DISPLAY_BN} আপনার পাশে আছেন।`
     ],
-    thanks: ["আপনাকেও ধন্যবাদ! 😊", "স্বাগতম! আবার যোগাযোগ করবেন।", "কোনো সমস্যা নেই! 👍"],
-    bye: ["ভালো থাকবেন! 👋", `আবার কথা হবে! ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবে।`, "আসি! 😊"]
+    thanks: ["আপনাকেও ধন্যবাদ! 😊", "স্বাগতম! আবার কিছু লাগলে বলবেন।", "কোনো সমস্যা নেই! 👍"],
+    bye: ["ভালো থাকবেন! 👋", `আবার কথা হবে! ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবেন।`, "খোদা হাফেজ! 😊"]
 }
 
 const QUICK_REPLY_POOL_HI = {
     greeting: [
-        `नमस्ते! 👋 ${OWNER_DISPLAY_HI} इस समय थोड़े व्यस्त हैं। आपको क्या चाहिए?`,
+        `नमस्ते! 👋 ${OWNER_DISPLAY_HI} इस समय थोड़े व्यस्त हैं। बताइए, क्या काम है?`,
         `हैलो! ${OWNER_DISPLAY_HI} जल्द ही आपसे संपर्क करेंगे। बताइए, आपको क्या चाहिए?`,
         `हैलो 😊 ${OWNER_DISPLAY_HI} न हों तब भी मैं मदद कर सकता हूँ!`
     ],
     apology: [
-        `माफ़ी की बात के लिए धन्यवाद। ${OWNER_DISPLAY_HI} खुद देखभाल करेंगे।`,
+        `माफ़ी मांगने के लिए धन्यवाद। ${OWNER_DISPLAY_HI} खुद इसे संभाल लेंगे।`,
         `ठीक है, चिंता मत कीजिए — ${OWNER_DISPLAY_HI} जल्द बात करेंगे।`
     ],
     angry: [
@@ -109,10 +110,10 @@ const QUICK_REPLY_POOL_HI = {
         `आपकी बात सुन रहा हूँ। ${OWNER_DISPLAY_HI} जल्द संपर्क करेंगे।`
     ],
     emotional: [
-        `मुश्किल समय होता है 💙 ${OWNER_DISPLAY_HI} जल्द बात करेंगे।`,
+        `वक्त मुश्किल है 💙 ${OWNER_DISPLAY_HI} जल्द बात करेंगे।`,
         `आपकी बात समझ रहा हूँ। ${OWNER_DISPLAY_HI} आपके साथ हैं।`
     ],
-    thanks: ["आपका भी धन्यवाद! 😊", "स्वागत है! फिर संपर्क करेंगे।", "कोई बात नहीं! 👍"],
+    thanks: ["आपका स्वागत है! 😊", "कभी भी! 😊", "कोई बात नहीं! 👍"],
     bye: ["अलविदा! 👋", `फिर बात होगी! ${OWNER_DISPLAY_HI} जल्द संपर्क करेंगे।`, "जाता हूँ, फिर बात करेंगे! 😊"]
 }
 
@@ -159,9 +160,9 @@ function composePersonalizedReply(reply, profile, uses, lang) {
     let out = reply
     if (profile && profile.isSad) {
         const lower = out.toLowerCase()
-        const alreadyEmpathetic = /^(hey,? hope|sorry to hear|oh,?|take care|bura mat|mon kharap|arey yaar|আশা করি ভালো আছেন|উম্মীদ है आप ठीक)/.test(lower)
+        const alreadyEmpathetic = /^(hey,? hope|sorry to hear|oh,?|take care|bura mat|mon kharap|arey yaar|মন খারাপ|उम्मीद है आप ठीक)/.test(lower)
         if (!alreadyEmpathetic) {
-            const empathyPrefix = lang === "bn" ? "আশা করি ভালো আছেন। " : lang === "hi" ? "उम्मीद है आप ठीक हैं। " : "Hey, hope you're doing okay. "
+            const empathyPrefix = lang === "bn" ? "মন খারাপ লাগছে শুনে। " : lang === "hi" ? "उम्मीद है आप ठीक हैं। " : "Hey, hope you're doing okay. "
             out = empathyPrefix + out
         }
     }
@@ -314,6 +315,16 @@ async function onMessage(message) {
                         const pending = getLastMessage(chatPartner)
                         if (pending && isQuestionLike(pending)) {
                             await learn(pending, rawBody, false, 1.0, "owner phone reply", "auto")
+                        }
+                    }
+                    // A manual DM reply hands the thread over: the bot stands
+                    // down for this chat for a while (each new reply pushes the
+                    // window out). Groups are exempt — one member's chat must
+                    // not go quiet for the whole group.
+                    if (!chatPartner.endsWith("@g.us")) {
+                        if (activateHandoff(chatPartner)) {
+                            bumpDigestHandoff()
+                            notifyAdmin(`🤝 Handoff active for ${getNumber(chatPartner)} — the bot stays quiet there for ${Math.round(HANDOFF_WINDOW_MS / 60000)} min. Replying again extends it.`)
                         }
                     }
                 }
@@ -494,7 +505,11 @@ async function onMessage(message) {
             setLastMessage(user, rawBody)   // holds the pending question for the owner's phone reply
         }
 
-        if (pauseTriggered || isUserPaused(user) || isGloballyPaused() || isInDND()) {
+        // You replied in this chat yourself (handoff): stand down like a
+        // pause would, but only for that chat. Logging & learning continue.
+        const handoffActive = !isGroup && isHandoffActive(user)
+        if (handoffActive && debugMode()) console.log(`🤝 Handoff active for ${getNumber(user)} — staying quiet (logging/learning continue)`)
+        if (handoffActive || pauseTriggered || isUserPaused(user) || isGloballyPaused() || isInDND()) {
             bumpDigestPausedSkip()   // the daily digest shows what went unanswered
             if (pauseTriggered) {
                 notifyAdmin(`⏸ Replies paused for ${getNumber(user)} for ${Math.round(getPauseDuration(user) / 1000)}s — you were addressed by name. Logging & learning continue.`)
@@ -619,6 +634,7 @@ async function onMessage(message) {
                     const outText = (lang !== "en" && isDontKnowReply(llmResult.text))
                         ? (lang === "bn" ? LLM_DONT_KNOW_BN : LLM_DONT_KNOW_HI)
                         : llmResult.text
+                    if (isDontKnowReply(llmResult.text)) logMiss(user, rawBody, "llm_unsure")
                     await sendOrDryRun(`QUICK REPLY : ${outText}`, {
                         onSent: () => {
                             bumpDigest("llmReplies")
@@ -643,6 +659,9 @@ async function onMessage(message) {
 
             case DECISION.SILENT:
             default:
+                // A question the bot could not answer: remember it (the !misses
+                // report shows what to teach next). Plain chatter doesn't count.
+                if (isQuestionLike(rawBody)) logMiss(user, rawBody, "no_answer")
                 break
         }
 

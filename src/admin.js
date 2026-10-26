@@ -15,6 +15,8 @@ const { normalize, canonicalize } = require("./text")
 const { getNumber } = require("./util")
 const { isAdminChannel } = require("./notify")
 const { logAdminActivity, logError } = require("./logging")
+const { topMisses, clearMisses } = require("./misses")
+const { sendMediaFile } = require("./mediaSend")
 
 let deps = null
 function init(d) { deps = d }
@@ -103,7 +105,7 @@ async function handleCommand(message, user, rawMsg) {
             `!learn_allow n !learn_block n\n` +
             `!review [2-10] !approve [1,3|2-5] !reject [1,3|2-5] !export_kb\n` +
             `!correct old|new\n` +
-            `!backup !stats !context !clean_knowledge\n` +
+            `!backup !stats !context !clean_knowledge !misses !sendmedia\n` +
             `!changet <chat|global> <seconds>\n` +
             `!dnd_set hh:mm hh:mm !dnd_off\n` +
             `!debug on/off !dryrun on/off !quiet on/off !digest\n` +
@@ -382,6 +384,47 @@ async function handleCommand(message, user, rawMsg) {
     }
     if (msg === "!digest") {
         return replyOrLog(deps.buildDigestText())
+    }
+    if (msg.startsWith("!misses")) {
+        const arg = msg.slice(7).trim()
+        if (arg === "clear") { clearMisses(); return replyOrLog("🧹 Miss log cleared.") }
+        const n = /^\d+$/.test(arg) ? Math.min(25, Math.max(1, parseInt(arg, 10))) : 5
+        const rows = topMisses(n)
+        if (rows.length === 0) return replyOrLog("No unanswered questions on record yet.")
+        const lines = rows.map((r, i) => `${i + 1}. (${r.count}x) ${r.q.substring(0, 70)}`).join("\n")
+        return replyOrLog(`🎯 Top unanswered questions:\n${lines}\n\nTeach these with !train q|answer.`)
+    }
+    if (msg.startsWith("!sendmedia")) {
+        const args = msg.slice(10).trim()
+        if (!args) return replyOrLog("⚠️ Format: !sendmedia <chatJid> <file path> [caption]\nOr reply to a customer's message: !sendmedia <file path> [caption]")
+        const parts = args.split(/\s+/)
+        let chatId = null
+        let filePath = null
+        let caption = ""
+        if (parts[0].includes("@c.us") || parts[0].includes("@g.us")) {
+            chatId = parts[0]
+            filePath = parts[1]
+            caption = parts.slice(2).join(" ")
+        } else {
+            try {
+                if (message.hasQuotedMsg) {
+                    const quoted = await message.getQuotedMessage()
+                    if (quoted) chatId = quoted.from
+                }
+            } catch (e) { logError("admin.!sendmedia", "quoted read failed", e) }
+            filePath = parts[0]
+            caption = parts.slice(1).join(" ")
+        }
+        if (!chatId) return replyOrLog("⚠️ No target chat given. Pass a JID, or reply to the customer's message.")
+        if (!filePath) return replyOrLog("⚠️ No file path given.")
+        if (!fs.existsSync(filePath)) return replyOrLog(`⚠️ File not found: ${filePath}`)
+        try {
+            await sendMediaFile(state.adminClient, chatId, filePath, caption || undefined)
+            return replyOrLog(`✅ Sent ${path.basename(filePath)} to ${getNumber(chatId)}.`)
+        } catch (e) {
+            logError("admin.!sendmedia", "media send failed", e)
+            return replyOrLog(`❌ Could not send: ${e.message}`)
+        }
     }
     if (msg === "!stats") {
         const kCount = state.knowledgeCache.length
