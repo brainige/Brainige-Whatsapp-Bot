@@ -1,5 +1,5 @@
 "use strict"
-/* src/logging.js — chat/group log files, HN log, admin log, 6-month cap. */
+/* src/logging.js — chat/group log files, HN log, miss log, admin log, 6-month cap. */
 
 const fs = require("fs-extra")
 const path = require("path")
@@ -8,6 +8,10 @@ const { PATHS } = require("./config")
 const { getNumber } = require("./util")
 
 const LOG_AGE_CAP_MS = 6 * 30 * 24 * 60 * 60 * 1000 // ~6 months
+
+/* The unanswered-question log ("what should the bot be taught next"). Kept
+   here, next to its writer, and read back by src/misses.js. */
+const MISSES_LOG = "./logs/misses.txt"
 
 function logDirFor(jid) {
     return jid.endsWith("@g.us") ? PATHS.LOG_GROUPS : PATHS.LOG_CHATS
@@ -64,6 +68,24 @@ function logHumanNeeded(jid, rawMsg, reason) {
     const line = `${ts}  |  FROM: ${num}  |  REASON: ${reason}  |  MSG: ${rawMsg}`
     try { fs.appendFileSync(PATHS.LOG_HN, line + "\n") } catch (e) { logError("logging.logHumanNeeded", "human-needed log append failed", e) }
     console.log(`⚠️  HUMAN NEEDED [${num}]: ${rawMsg.substring(0, 80)}`)
+}
+
+/* ── logMiss — every question the bot could NOT answer ─────────────────
+   One line per miss in logs/misses.txt, in the same pipe shape as
+   logHumanNeeded. This is the "teach the bot this next" ledger: the owner
+   reads it (or its topMisses() rollup in src/misses.js) after a few days
+   and adds answers for whatever keeps showing up. Misses are routine, not
+   alarming — no console line per miss (a chatty HN-style print would flood
+   the terminal); a write failure still goes through logError, never silent. */
+function logMiss(jid, text, reason) {
+    const ts = new Date().toISOString()
+    const num = getNumber(jid)
+    /* One miss = one line: a WhatsApp message's newlines are flattened to
+       spaces so a multi-line question can't fake extra records. */
+    const flat = String(text == null ? "" : text).replace(/\s*[\r\n]+\s*/g, " ").trim()
+    const line = `${ts}  |  FROM: ${num}  |  REASON: ${reason}  |  MSG: ${flat}`
+    try { fs.appendFileSync(MISSES_LOG, line + "\n") } catch (e) { logError("logging.logMiss", "miss log append failed", e) }
+    trimLogIfOld(MISSES_LOG)
 }
 
 function logAdminActivity(text) {
@@ -123,5 +145,6 @@ function logError(location, context, err, opts) {
 module.exports = {
     LOG_AGE_CAP_MS, logDirFor, getLogFilePath, writeToLog,
     logIncoming, logBotReply, logOutgoing, trimLogIfOld,
-    logHumanNeeded, logAdminActivity, logError
+    logHumanNeeded, logAdminActivity, logError,
+    MISSES_LOG, logMiss
 }
