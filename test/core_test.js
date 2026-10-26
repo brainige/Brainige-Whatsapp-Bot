@@ -275,7 +275,7 @@ async function main() {
     check("top-keywords still injected", llm.buildSystemPrompt("User's frequent topics: pricing. ").includes("User's frequent topics: pricing. "))
 
     check("isDontKnowReply: exact line", handler.isDontKnowReply(LLM_DONT_KNOW) === true)
-    check("isDontKnowReply: case/punctuation drift", handler.isDontKnowReply("i don't know. you'll need to contact utsab") === true)
+    check("isDontKnowReply: case/punctuation drift", handler.isDontKnowReply(LLM_DONT_KNOW.toLowerCase().replace(/[.!]+$/g, "")) === true)
     check("isDontKnowReply: normal reply is NOT the line", handler.isDontKnowReply("Sure, the price is 500 TESTDE.") === false)
 
     console.log("\n── don't-know reply sent but NEVER learned; normal reply queued ──")

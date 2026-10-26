@@ -53,9 +53,21 @@ const KB_FULL_SCAN_MAX  = 400               // ≤ this many entries → EVERY e
 const KB_CANDIDATE_POOL = 200               // bigger brain → meaning-math runs only on the top N word-index candidates
 const MEDIA_MAX_BYTES   = 20 * 1024 * 1024  // media over 20MB is logged but never downloaded/saved
 const EMBED_CACHE_MAX   = 25000            // embedding-CACHE cap (~38MB worst case). knowledge.json itself is NEVER capped.
-const LLM_DONT_KNOW     = "I don't know. You'll need to contact Utsab."   // the ONLY allowed unsure-fallback reply (English)
-const LLM_DONT_KNOW_BN  = "আমি জানি না। উৎসব-এর সাথে যোগাযোগ করুন।"   // the same line in Bengali, sent when the customer writes Bengali
-const LLM_DONT_KNOW_HI  = "मुझे नहीं पता। आपको उत्सब से संपर्क करना होगा।"   // the same line in Hindi, sent when the customer writes Hindi
+/* ── Identity ──
+   BRAND_NAME is the product name (terminal banner, !help, digest header).
+   The owner names show up in customer replies, and PAUSE_NAMES drives the
+   address-by-name pause trigger. All four come from .env, so anyone who
+   forks this repo can run it as their own business without touching code. */
+const BRAND_NAME       = process.env.BRAND_NAME || "Brainige"
+const OWNER_DISPLAY    = process.env.OWNER_DISPLAY || "Utsab/Avi"
+const OWNER_DISPLAY_BN = process.env.OWNER_DISPLAY_BN || "উৎসব/আভি"
+const OWNER_DISPLAY_HI = process.env.OWNER_DISPLAY_HI || "उत्सब/अवि"
+const PAUSE_NAMES      = String(process.env.PAUSE_NAMES || "utsab,avi")
+    .split(",").map(s => s.trim().toLowerCase()).filter(Boolean)
+
+const LLM_DONT_KNOW     = `I don't know. You'll need to contact ${OWNER_DISPLAY}.`   // the ONLY allowed unsure-fallback reply (English)
+const LLM_DONT_KNOW_BN  = `আমি জানি না। ${OWNER_DISPLAY_BN}-এর সাথে যোগাযোগ করুন।`   // the same line in Bengali, sent when the customer writes Bengali
+const LLM_DONT_KNOW_HI  = `मुझे नहीं पता। आपको ${OWNER_DISPLAY_HI} से संपर्क करना होगा।`   // the same line in Hindi, sent when the customer writes Hindi
 
 /* ── Reply-matching tunables — every number in ONE place ──
    These were previously hard-coded at their usage sites. Pure renames:
@@ -465,6 +477,7 @@ module.exports = {
     LEARN_DIRECT_MIN_COSINE, LEARN_DIRECT_MIN_SHARED_WORDS, EMBED_TEXT_MAX_CHARS,
     FLUSH_INTERVAL_MS, PROCESSED_ID_MAX_AGE_MS, PROCESSED_ID_HARD_CAP, PROCESSED_ID_COMPACT_AT,
     RECONNECT_MAX_RETRIES, RECONNECT_BASE_DELAY_MS, DESTROY_TIMEOUT_MS, READY_WATCHDOG_MS,
+    BRAND_NAME, OWNER_DISPLAY, OWNER_DISPLAY_BN, OWNER_DISPLAY_HI, PAUSE_NAMES,
     KB_FULL_SCAN_MAX, KB_CANDIDATE_POOL, MEDIA_MAX_BYTES, EMBED_CACHE_MAX, LLM_DONT_KNOW, LLM_DONT_KNOW_BN, LLM_DONT_KNOW_HI,
     SEARCH_LEX_COSINE_WEIGHT, SEARCH_LEX_JACCARD_WEIGHT, SEARCH_LEN_NORM_BASE, SEARCH_LEN_NORM_RATIO,
     SEARCH_HYBRID_SEM_WEIGHT, SEARCH_HYBRID_LEX_WEIGHT, SEARCH_CONTEXT_LEX_BOOST, SEARCH_CONTEXT_SEM_BOOST,

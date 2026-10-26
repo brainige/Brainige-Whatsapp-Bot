@@ -1,22 +1,11 @@
 "use strict"
 /* ══════════════════════════════════════════════════════
-   UTSAB/AVI WhatsApp Bot v6.5 (modular)
+   Brainige WhatsApp Bot (modular)
    bot.js — entry point (thin). All logic in src/ modules.
-
-   Fixes applied (approved 2026-10-11): A1–A5
-   Fixes applied (approved 2026-10-12): B1–B3
-   Fixes applied (approved 2026-10-16): C1–C7 —
-     C1 learning tiers          (src/knowledge.js, src/handler.js, src/text.js)
-     C2 full-text embeddings    (src/embeddings.js, src/embedCache.js)
-     C3 safe reconnect          (src/reconnect.js, bot.js)
-     C4 30s memory flush        (src/memory.js)
-     C5 visible errors          (src/logging.js + all 43 silent catches)
-     C6 dedup survives restarts (src/tracking.js)
-     C7 addressed-only pause    (src/pause.js, src/handler.js)
 ══════════════════════════════════════════════════════ */
 
 /* 1. Config loads settings + filesystem first (order matters). */
-const { VERSION, PATHS, saveJSON, drainStateFileNotices } = require("./src/config")
+const { VERSION, BRAND_NAME, PATHS, saveJSON, drainStateFileNotices } = require("./src/config")
 const state = require("./src/state")
 
 /* 2. Databases (knowledge.db is wiped here for the V6.4 full-rebuild strategy). */
@@ -110,7 +99,7 @@ function createAndBindClient() {
 
         const kCount = state.knowledgeCache.length
         console.log("\n╔════════════════════════════════════════════╗")
-        console.log(`║  ✅ BOT READY — UTSAB/AVI v${VERSION}`)
+        console.log(`║  ✅ ${BRAND_NAME.toUpperCase()} READY — v${VERSION}`)
         console.log(`║  Knowledge entries : ${kCount}`)
         console.log("╚════════════════════════════════════════════╝\n")
 
@@ -246,7 +235,7 @@ process.on("unhandledRejection", err => crashFlushAndExit("Unhandled promise rej
    MAIN STARTUP SEQUENCE
 ══════════════════════════════════════════════════════ */
 async function main() {
-    console.log(`🚀 Starting UTSAB/AVI WhatsApp Bot v${VERSION} (modular)...`)
+    console.log(`🚀 Starting ${BRAND_NAME} WhatsApp Bot v${VERSION} (modular)...`)
     wipeAllLLMContextsOnStartup()      // V6.5 bug #4 lifecycle (was Section 4)
     restoreConvoMemoryFromDisk()       // was Section 15 module-load
     loadProcessedIds()                 // BEFORE the client connects — redelivered messages must not double-reply

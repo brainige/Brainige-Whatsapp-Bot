@@ -1,7 +1,7 @@
 {
-  "name": "utsab-avi-whatsapp-bot",
+  "name": "brainige-whatsapp-bot",
   "version": "6.5.0",
-  "description": "UTSAB/AVI WhatsApp auto-reply bot (modular v6.5)",
+  "description": "Brainige WhatsApp auto-reply bot (modular v6.5)",
   "main": "bot.js",
   "private": true,
   "engines": {

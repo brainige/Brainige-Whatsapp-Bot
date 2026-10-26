@@ -10,7 +10,7 @@ media/
 logs/
 llm_context/
 
-# Local workspace notes — never meant for the repo
+# Local workspace notes + Agentic Debugging and Bot Reviews Reseaching — never meant for the repo
 AGENTS.md
 IDEA.md
 Bot Reviews/

@@ -11,6 +11,7 @@ const fs = require("fs-extra")
 const path = require("path")
 
 const { PATHS, MEDIA_MAX_BYTES, LLM_DONT_KNOW, LLM_DONT_KNOW_BN, LLM_DONT_KNOW_HI,
+    OWNER_DISPLAY, OWNER_DISPLAY_BN, OWNER_DISPLAY_HI,
     GROUP_CONFIDENCE_THRESHOLD, THRESHOLD_HIGH, THRESHOLD_MEDIUM } = require("./config")   // the decision thresholds now come from config (they existed there but were never used before)
 const state = require("./state")
 const { normalize, detectIntent, isQuestionLike, detectLanguage } = require("./text")
@@ -48,24 +49,24 @@ sendGuard.initDropLogger(({ chatId, reason }) => {
 /* ── quick reply pool (single English pool) ── */
 const QUICK_REPLY_POOL = {
     greeting: [
-        "Hey! 👋 UTSAB/AVI is a bit busy right now. What's up?",
-        "Hi there! I'm the bot. UTSAB/AVI will get back to you soon!",
-        "Hello 😊 How can I help while UTSAB/AVI is away?"
+        `Hey! 👋 ${OWNER_DISPLAY} is a bit busy right now. What's up?`,
+        `Hi there! I'm the bot. ${OWNER_DISPLAY} will get back to you soon!`,
+        `Hello 😊 How can I help while ${OWNER_DISPLAY} is away?`
     ],
     apology: [
-        "Apology noted. Whether it's accepted depends on what happened — UTSAB/AVI will sort it out.",
-        "It happens. Don't stress too much — UTSAB/AVI will talk to you soon."
+        `Apology noted. Whether it's accepted depends on what happened — ${OWNER_DISPLAY} will sort it out.`,
+        `It happens. Don't stress too much — ${OWNER_DISPLAY} will talk to you soon.`
     ],
     angry: [
-        "Hey, take a breath. UTSAB/AVI will handle this personally. 🤝",
-        "I hear you. UTSAB/AVI will reach out — hang tight."
+        `Hey, take a breath. ${OWNER_DISPLAY} will handle this personally. 🤝`,
+        `I hear you. ${OWNER_DISPLAY} will reach out — hang tight.`
     ],
     emotional: [
-        "That sounds tough 💙 UTSAB/AVI genuinely cares and will talk to you soon.",
-        "I hear you. Things get heavy sometimes. UTSAB/AVI will be with you shortly."
+        `That sounds tough 💙 ${OWNER_DISPLAY} genuinely cares and will talk to you soon.`,
+        `I hear you. Things get heavy sometimes. ${OWNER_DISPLAY} will be with you shortly.`
     ],
     thanks: ["You're welcome! 😊", "Anytime!", "No problem at all! 👍"],
-    bye: ["Take care! 👋", "Goodbye! UTSAB/AVI will catch you later.", "Bye! Talk soon 😊"]
+    bye: ["Take care! 👋", `Goodbye! ${OWNER_DISPLAY} will catch you later.`, "Bye! Talk soon 😊"]
 }
 
 /* The same canned replies in Bengali and Hindi, served to customers who write
@@ -73,46 +74,46 @@ const QUICK_REPLY_POOL = {
    per-intent if a translation is ever missing. */
 const QUICK_REPLY_POOL_BN = {
     greeting: [
-        "হ্যালো! 👋 উৎসব/আভি এখন একটু ব্যস্ত আছে। কী বলতে চান?",
-        "আসসালামু আলাইকুম! উৎসব/আভি শীঘ্রই যোগাযোগ করবে। আপনার কী দরকার?",
-        "হ্যালো 😊 উৎসব/আভি না থাকলেও আমি সাহায্য করতে পারি!"
+        `হ্যালো! 👋 ${OWNER_DISPLAY_BN} এখন একটু ব্যস্ত আছে। কী বলতে চান?`,
+        `আসসালামু আলাইকুম! ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবে। আপনার কী দরকার?`,
+        `হ্যালো 😊 ${OWNER_DISPLAY_BN} না থাকলেও আমি সাহায্য করতে পারি!`
     ],
     apology: [
-        "ক্ষমা চাওয়ার জন্য ধন্যবাদ। উৎসব/আভি নিজে দেখভাল করবে।",
-        "ঠিক আছে, চিন্তা করবেন না — উৎসব/আভি শীঘ্রই কথা বলবে।"
+        `ক্ষমা চাওয়ার জন্য ধন্যবাদ। ${OWNER_DISPLAY_BN} নিজে দেখভাল করবে।`,
+        `ঠিক আছে, চিন্তা করবেন না — ${OWNER_DISPLAY_BN} শীঘ্রই কথা বলবে।`
     ],
     angry: [
-        "শান্ত হোন, উৎসব/আভি নিজে এটা সামলাবে। 🤝",
-        "আপনার কথা শুনছি। উৎসব/আভি শীঘ্রই যোগাযোগ করবে।"
+        `শান্ত হোন, ${OWNER_DISPLAY_BN} নিজে এটা সামলাবে। 🤝`,
+        `আপনার কথা শুনছি। ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবে।`
     ],
     emotional: [
-        "খারাপ সময় পার হবে 💙 উৎসব/আভি শীঘ্রই কথা বলবে।",
-        "আপনার কথা বুঝতে পারছি। উৎসব/আভি পাশে আছে।"
+        `খারাপ সময় পার হবে 💙 ${OWNER_DISPLAY_BN} শীঘ্রই কথা বলবে।`,
+        `আপনার কথা বুঝতে পারছি। ${OWNER_DISPLAY_BN} পাশে আছে।`
     ],
     thanks: ["আপনাকেও ধন্যবাদ! 😊", "স্বাগতম! আবার যোগাযোগ করবেন।", "কোনো সমস্যা নেই! 👍"],
-    bye: ["ভালো থাকবেন! 👋", "আবার কথা হবে! উৎসব/আভি শীঘ্রই যোগাযোগ করবে।", "আসি! 😊"]
+    bye: ["ভালো থাকবেন! 👋", `আবার কথা হবে! ${OWNER_DISPLAY_BN} শীঘ্রই যোগাযোগ করবে।`, "আসি! 😊"]
 }
 
 const QUICK_REPLY_POOL_HI = {
     greeting: [
-        "नमस्ते! 👋 उत्सब/अवि इस समय थोड़े व्यस्त हैं। आपको क्या चाहिए?",
-        "हैलो! उत्सब/अवि जल्द ही आपसे संपर्क करेंगे। बताइए, आपको क्या चाहिए?",
-        "हैलो 😊 उत्सब/अवि न हों तब भी मैं मदद कर सकता हूँ!"
+        `नमस्ते! 👋 ${OWNER_DISPLAY_HI} इस समय थोड़े व्यस्त हैं। आपको क्या चाहिए?`,
+        `हैलो! ${OWNER_DISPLAY_HI} जल्द ही आपसे संपर्क करेंगे। बताइए, आपको क्या चाहिए?`,
+        `हैलो 😊 ${OWNER_DISPLAY_HI} न हों तब भी मैं मदद कर सकता हूँ!`
     ],
     apology: [
-        "माफ़ी की बात के लिए धन्यवाद। उत्सब/अवि खुद देखभाल करेंगे।",
-        "ठीक है, चिंता मत कीजिए — उत्सब/अवि जल्द बात करेंगे।"
+        `माफ़ी की बात के लिए धन्यवाद। ${OWNER_DISPLAY_HI} खुद देखभाल करेंगे।`,
+        `ठीक है, चिंता मत कीजिए — ${OWNER_DISPLAY_HI} जल्द बात करेंगे।`
     ],
     angry: [
-        "शांत रहिए, उत्सब/अवि खुद इसे संभालेंगे। 🤝",
-        "आपकी बात सुन रहा हूँ। उत्सब/अवि जल्द संपर्क करेंगे।"
+        `शांत रहिए, ${OWNER_DISPLAY_HI} खुद इसे संभालेंगे। 🤝`,
+        `आपकी बात सुन रहा हूँ। ${OWNER_DISPLAY_HI} जल्द संपर्क करेंगे।`
     ],
     emotional: [
-        "मुश्किल समय होता है 💙 उत्सब/अवि जल्द बात करेंगे।",
-        "आपकी बात समझ रहा हूँ। उत्सब/अवि आपके साथ हैं।"
+        `मुश्किल समय होता है 💙 ${OWNER_DISPLAY_HI} जल्द बात करेंगे।`,
+        `आपकी बात समझ रहा हूँ। ${OWNER_DISPLAY_HI} आपके साथ हैं।`
     ],
     thanks: ["आपका भी धन्यवाद! 😊", "स्वागत है! फिर संपर्क करेंगे।", "कोई बात नहीं! 👍"],
-    bye: ["अलविदा! 👋", "फिर बात होगी! उत्सब/अवि जल्द संपर्क करेंगे।", "जाता हूँ, फिर बात करेंगे! 😊"]
+    bye: ["अलविदा! 👋", `फिर बात होगी! ${OWNER_DISPLAY_HI} जल्द संपर्क करेंगे।`, "जाता हूँ, फिर बात करेंगे! 😊"]
 }
 
 function getQuickReply(intentResult, hasCtx, lang) {

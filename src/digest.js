@@ -1,7 +1,7 @@
 "use strict"
 /* src/digest.js — daily 9 PM IST digest, counters in settings.digestState. */
 
-const { DIGEST_HOUR, PATHS, VERSION, saveSettings } = require("./config")
+const { DIGEST_HOUR, PATHS, VERSION, BRAND_NAME, saveSettings } = require("./config")
 const state = require("./state")
 const { istNow } = require("./util")
 const { getNumber } = require("./util")
@@ -60,7 +60,7 @@ function buildDigestText() {
         .sort((a, b) => b[1] - a[1]).slice(0, 3)
         .map(([label, n]) => `${label} (${n})`).join(", ") || "none"
     return (
-        `📈 Daily digest — UTSAB/AVI v${VERSION}\n` +
+        `📈 Daily digest — ${BRAND_NAME} v${VERSION}\n` +
         `${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n\n` +
         `Messages handled : ${t.messages || 0}\n` +
         `Replies sent    : ${total} (KB ${kbRatio}% / LLM ${llmRatio}%)\n` +

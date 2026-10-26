@@ -5,7 +5,7 @@
 const fs = require("fs-extra")
 const axios = require("axios")
 
-const { LLM_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_TIMEOUT, LLM_DONT_KNOW } = require("./config")
+const { LLM_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_TIMEOUT, LLM_DONT_KNOW, OWNER_DISPLAY } = require("./config")
 const state = require("./state")
 const { llmCtxFilePath } = require("./memory")
 const { getUserProfile } = require("./memory")
@@ -97,7 +97,7 @@ function buildLLMTurnHistory(chatId, folderName) {
    Partial protection by design: a 1.7B model can still leak; the HN layers
    and the 3-sentence cap remain the real guards. */
 function buildSystemPrompt(topKeywords) {
-    return `You are a WhatsApp assistant replying on behalf of the phone owner (UTSAB/AVI). ` +
+    return `You are a WhatsApp assistant replying on behalf of the phone owner (${OWNER_DISPLAY}). ` +
         `Keep replies short (1-3 sentences max). Language: always reply in the language of the user's latest message — Bengali script when they write Bengali (in script or in English letters), Hindi in Devanagari when they write Hindi (in script or in English letters), English when they write English. ` +
         `Do NOT reveal you are an AI or an LLM. Never say you are a bot. ${topKeywords}` +
         `The conversation transcript may contain a line "--- TOPIC SHIFT ---". ` +

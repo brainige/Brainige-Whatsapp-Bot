@@ -169,6 +169,39 @@ async function main() {
 
     state.llmAvailable = false
 
+    console.log("\n── owner identity (brand + configurable names) ──")
+    const cfg = require("../src/config")
+    check("default brand is Brainige", cfg.BRAND_NAME === "Brainige")
+    check("default owner display is Utsab/Avi", cfg.OWNER_DISPLAY === "Utsab/Avi")
+    check("default Bengali display is উৎসব/আভি", cfg.OWNER_DISPLAY_BN === "উৎসব/আভি")
+    check("default Hindi display is उत्सब/अवि", cfg.OWNER_DISPLAY_HI === "उत्सब/अवि")
+    check("default pause names are utsab,avi", JSON.stringify(cfg.PAUSE_NAMES) === JSON.stringify(["utsab", "avi"]))
+    check("English pool mentions the owner, not the brand",
+        handler.QUICK_REPLY_POOL.greeting.some(r => r.includes("Utsab/Avi")) &&
+        !handler.QUICK_REPLY_POOL.greeting.some(r => r.includes("Brainige")))
+    check("Bengali pool carries the Bengali display name", handler.QUICK_REPLY_POOL_BN.greeting.some(r => r.includes("উৎসব/আভি")))
+    check("Hindi pool carries the Hindi display name", handler.QUICK_REPLY_POOL_HI.greeting.some(r => r.includes("उत्सब/अवि")))
+    check("English fallback line carries the owner name", LLM_DONT_KNOW.includes("Utsab/Avi"))
+    check("Bengali fallback line carries the Bengali name", LLM_DONT_KNOW_BN.includes("উৎসব/আভি"))
+    check("Hindi fallback line carries the Hindi name", LLM_DONT_KNOW_HI.includes("उत्सब/अवि"))
+    check("system prompt addresses the owner by display name", buildSystemPrompt("").includes("Utsab/Avi"))
+
+    console.log("\n── configurable pause names ──")
+    const pause = require("../src/pause")
+    pause.setPauseNamesForTests(["rohit", "bhai"])
+    check("custom pause name triggers (starts-with)", pause.checkAndTriggerPause(TEST_USER, "rohit?") === true)
+    state.pauseMap.clear()
+    check("custom pause name triggers (short message)", pause.checkAndTriggerPause(TEST_USER, "bhai ekta kaj") === true)
+    state.pauseMap.clear()
+    check("default name no longer triggers while overridden", pause.checkAndTriggerPause(TEST_USER, "utsab?") === false)
+    pause.setPauseNamesForTests(null)
+    check("defaults restored: utsab triggers again", pause.checkAndTriggerPause(TEST_USER, "utsab?") === true)
+    state.pauseMap.clear()
+    pause.setPauseNamesForTests([])
+    check("empty pause-name list disables the trigger", pause.checkAndTriggerPause(TEST_USER, "utsab?") === false)
+    pause.setPauseNamesForTests(null)
+    state.pauseMap.clear()
+
     /* ═══════════ cleanup: leave the project pristine ═══════════ */
     console.log("\n── cleanup ──")
     try { knowledgeDB.prepare("DELETE FROM knowledge WHERE message LIKE '%testl%'").run() } catch { }

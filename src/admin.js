@@ -9,7 +9,7 @@
 const path = require("path")
 const fs = require("fs-extra")
 
-const { PATHS, VERSION, saveSettings, saveJSON } = require("./config")
+const { PATHS, VERSION, BRAND_NAME, OWNER_DISPLAY, saveSettings, saveJSON } = require("./config")
 const state = require("./state")
 const { normalize, canonicalize } = require("./text")
 const { getNumber } = require("./util")
@@ -35,7 +35,7 @@ async function handleCommand(message, user, rawMsg) {
 
     if (msg === "!help") {
         return replyOrLog(
-            `🤖 UTSAB/AVI v${VERSION} commands:\n` +
+            `🤖 ${BRAND_NAME} v${VERSION} commands:\n` +
             `!pause !resume !train q|a !forget q\n` +
             `!blacklist n !whitelist n !learning on/off\n` +
             `!group_allow [id] !group_block [id]\n` +
@@ -184,7 +184,7 @@ async function handleCommand(message, user, rawMsg) {
     if (msg === "!export_kb") {
         const stamp = new Date().toISOString().replace(/[:.]/g, "-")
         const file = path.join(PATHS.LOG_BACKUPS, `kb_export_${stamp}.txt`)
-        let out = `# Knowledge base export — UTSAB/AVI v${VERSION}\n# ${new Date().toISOString()}\n# Total entries: ${state.knowledgeCache.length}\n\n`
+        let out = `# Knowledge base export — ${BRAND_NAME} v${VERSION}\n# ${new Date().toISOString()}\n# Total entries: ${state.knowledgeCache.length}\n\n`
         for (const row of state.knowledgeCache) {
             out += `--- #${row.id} (uses: ${row.uses || 0}) ---\nQ: ${row.message}\nA: ${row.reply}\n\n`
         }
@@ -245,7 +245,7 @@ async function handleCommand(message, user, rawMsg) {
         const target = parts.slice(0, -1).join(" ")
         state.settings.customPauseDurations[target] = secs
         saveSettings()
-        return replyOrLog(`✅ "utsab/avi" pause for ${target} set to ${secs}s.`)
+        return replyOrLog(`✅ "${OWNER_DISPLAY}" pause for ${target} set to ${secs}s.`)
     }
     if (msg.startsWith("!dnd_set")) {
         const parts = msg.slice(8).trim().split(/\s+/).filter(Boolean)

@@ -1,6 +1,6 @@
 # Brainige WhatsApp Bot
 
-This is the auto-reply bot I built for my business WhatsApp. It answers customer questions from a knowledge base you edit by hand. When the base doesn't have an answer, it asks a local LLM and replies with that. Nothing the LLM says enters the knowledge base until you've approved it yourself.
+Brainige is the auto-reply bot I built for my business WhatsApp. It answers customer questions from a knowledge base you edit by hand. When the base doesn't have an answer, it asks a local LLM and replies with that. Nothing the LLM says enters the knowledge base until you've approved it yourself.
 
 It runs on your own machine, so your customer data stays local. WhatsApp Web is driven through headless Chrome, and the LLM runs in LM Studio. The only outside call is the optional VirusTotal link check.
 
@@ -13,6 +13,7 @@ It runs on your own machine, so your customer data stays local. WhatsApp Web is 
 - Human-needed detection: three layers (keyword, context, semantic) catch the messages a bot shouldn't touch, like complaints, pricing disputes, or anything urgent
 - Link safety: every link in a message is checked against VirusTotal and written to a local ledger. Customers never see the check. You get the flags, plus an immediate alert for malicious links
 - Send pacing: a minimum gap between sends, an hourly cap, and suppression of identical replies, so a busy hour doesn't look like spam to WhatsApp
+- Name-triggered pause: a customer writing your name (see `PAUSE_NAMES` below) pauses auto-replies for that chat, so you can step in yourself
 - Group support: whitelist the groups the bot may answer in, learn from your own replies in those groups, stay silent everywhere else
 - Daily digest at 21:00 covering replies sent, messages skipped, pairs queued for review, and send-guard events
 - Everything is logged locally: chats, errors, saved media, and the link ledger
@@ -23,7 +24,7 @@ You'll need:
 
 - Node.js 20 or newer
 - Google Chrome (the bot drives it headless through whatsapp-web.js)
-- LM Studio running on this same machine, with a model loaded. The default config expects Qwen3-1.7B at `http://127.0.0.1:1234`
+- LM Studio running on this same machine, with a model loaded. Any model LM Studio serves works — the default config expects Qwen3-1.7B at `http://127.0.0.1:1234`, and you change it with `LLM_MODEL`
 - A VirusTotal API key if you want link scanning. The free tier is enough. If you don't have one yet, links are still recorded, just not scanned
 
 ## Setup
@@ -43,6 +44,10 @@ Open `.env` and fill in the values below. If you skip the VirusTotal key, leave 
 | `ADMIN` | Your WhatsApp number in JID form: country code + number + `@c.us`. Commands only work from this number. |
 | `LLM_URL` | Where LM Studio listens. Default `http://127.0.0.1:1234/v1/chat/completions`. |
 | `LLM_MODEL` | Model name as LM Studio shows it. Default `Qwen3-1.7B-Instruct`. |
+| `BRAND_NAME` | Product name on the terminal banner, `!help` and the daily digest. Default `Brainige`. |
+| `OWNER_DISPLAY` | How you appear in customer replies. Default `Utsab/Avi`. |
+| `OWNER_DISPLAY_BN` / `OWNER_DISPLAY_HI` | The same for Bengali and Hindi replies. Default `উৎসব/আভি` / `उत्सब/अवि`. |
+| `PAUSE_NAMES` | Words that pause replies when a customer addresses you by name, comma separated. Default `utsab,avi`. An empty value turns the trigger off. |
 
 Then:
 
@@ -106,7 +111,7 @@ Send from the admin number, in any chat:
 npm test
 ```
 
-391 checks across ten suites, all offline. WhatsApp, the network, and the embedding model are stubbed, so the suite runs in seconds and never touches your real session or data files. It snapshots and restores everything it touches, so a test run leaves the project exactly as it found it.
+408 checks across ten suites, all offline. WhatsApp, the network, and the embedding model are stubbed, so the suite runs in seconds and never touches your real session or data files. It snapshots and restores everything it touches, so a test run leaves the project exactly as it found it.
 
 ## Project layout
 

@@ -1,10 +1,28 @@
 "use strict"
 /* src/pause.js — per-chat pause, global pause, DND quiet hours (Asia/Kolkata). */
 
-const { CONVO_TTL, TOPIC_SHIFT_TTL } = require("./config") // CONVO_TTL/TOPIC_SHIFT_TTL re-exported for compatibility
+const { CONVO_TTL, TOPIC_SHIFT_TTL, PAUSE_NAMES } = require("./config") // CONVO_TTL/TOPIC_SHIFT_TTL re-exported for compatibility
 const { saveSettings } = require("./config")
 const state = require("./state")
 const { getNumber, istNow, parseHHMM } = require("./util")
+
+/* The address-by-name trigger words come from config (PAUSE_NAMES in .env,
+   default: utsab,avi). Each name is escaped so nothing regex-special in a
+   custom name can break the pattern. An empty PAUSE_NAMES disables the
+   trigger entirely. */
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+let pauseNameStartRe = null
+let pauseNameAnyRe = null
+function rebuildPauseNames(names) {
+    const list = (names === null || names === undefined ? PAUSE_NAMES : names)
+        .map(s => String(s).trim().toLowerCase()).filter(Boolean)
+    if (list.length === 0) { pauseNameStartRe = null; pauseNameAnyRe = null; return }
+    const alts = list.map(escapeRe).join("|")
+    pauseNameStartRe = new RegExp(`^(${alts})\\b`, "i")
+    pauseNameAnyRe = new RegExp(`\\b(${alts})\\b`, "i")
+}
+function setPauseNamesForTests(names) { rebuildPauseNames(names) }
+rebuildPauseNames()
 
 function getPauseDuration(jid) {
     if (jid && state.settings.customPauseDurations && state.settings.customPauseDurations[jid]) {
@@ -29,9 +47,10 @@ function checkAndTriggerPause(jid, msg) {
     if (isUserPaused(jid)) return false                       // active pause: no extension, no re-notify
     const text = String(msg || "").trim()                     // media captions can be absent
     if (!text) return false
-    const startsWithName = /^(utsab|avi)\b/i.test(text)
+    if (!pauseNameStartRe) return false               // no trigger names configured
+    const startsWithName = pauseNameStartRe.test(text)
     const words = text.split(/\s+/).filter(Boolean)
-    const shortWithName = words.length <= 4 && /\b(utsab|avi)\b/i.test(text)
+    const shortWithName = words.length <= 4 && pauseNameAnyRe.test(text)
     if (!startsWithName && !shortWithName) return false
     const dur = getPauseDuration(jid)
     state.pauseMap.set(jid, Date.now() + dur)
@@ -66,4 +85,4 @@ function isInDND() {
     return cur >= start || cur < end                            // overnight window
 }
 
-module.exports = { getPauseDuration, checkAndTriggerPause, isUserPaused, isGloballyPaused, setGlobalPause, isInDND }
+module.exports = { getPauseDuration, checkAndTriggerPause, isUserPaused, isGloballyPaused, setGlobalPause, isInDND, setPauseNamesForTests }
