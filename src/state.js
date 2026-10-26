@@ -30,6 +30,9 @@ const state = {
     pauseMap: new Map(),
     globalPauseUntil: 0,
 
+    // human handoff: chatId -> timestamp the bot may resume auto-replying (the stand-down window, re-anchored to now on each owner reply)
+    handoffUntil: new Map(),
+
     // LLM
     llmAvailable: false,
     llmCallCount: 0,

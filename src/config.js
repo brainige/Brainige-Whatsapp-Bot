@@ -112,6 +112,13 @@ const CONTACT_NAME_TTL_MS        = 24 * 60 * 60 * 1000  // JID → display-name 
 const MEDIA_RETENTION_DAYS       = 60                    // media files older than this are deleted; the chat-log line keeps the record forever
 const CHAT_MEMORY_USER_TTL_DAYS = 60                    // chat_memory users inactive longer than this are pruned
 
+/* ── Human handoff ──
+   When the owner replies to a customer from their own phone the bot stands
+   down for that chat — no auto-replies while the owner is handling it. The
+   window slides: each new owner reply pushes the expiry out, and auto-replies
+   resume on their own once it lapses. */
+const HANDOFF_WINDOW_MS = 30 * 60 * 1000   // 30 minutes of owner-handled silence
+
 const PATHS = {
     MEMORY:    "./memory/chat_memory.json",
     KNOWLEDGE: "./memory/knowledge.json",
@@ -486,7 +493,7 @@ module.exports = {
     SEND_MIN_GAP_MS_MIN, SEND_MIN_GAP_MS_MAX, SEND_HOURLY_CAP, SEND_CAP_WINDOW_MS,
     SEND_QUEUE_MAX_AGE_MS, IDENTICAL_TEXT_HOUR_CAP,
     NOTIFY_BATCH_MS, NOTIFY_BATCH_MAX_LINES, BOT_SENT_ID_TTL_MS,
-    CONTACT_NAME_TTL_MS, MEDIA_RETENTION_DAYS, CHAT_MEMORY_USER_TTL_DAYS,
+    CONTACT_NAME_TTL_MS, MEDIA_RETENTION_DAYS, CHAT_MEMORY_USER_TTL_DAYS, HANDOFF_WINDOW_MS,
     PATHS, TRUSTED_DOMAINS, INTENT_WEIGHTS,
     HN_CONFIG, HUMAN_NEEDED_PATTERNS,
     loadJSON, saveJSON, saveJSONAsync, saveSettings,
