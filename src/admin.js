@@ -21,6 +21,67 @@ function init(d) { deps = d }
 
 function setReviewCurrentId(id) { state.reviewCurrentId = id }
 
+// The numbers an admin listed with !review <N>, in the order shown, so a
+// later !approve / !reject <spec> can map a number back to its pending row.
+// Kept module-local on purpose — it never outlives the process.
+let shownBatch = []
+
+function clip(text, max) {
+    const s = String(text == null ? "" : text)
+    return s.length <= max ? s : s.slice(0, max - 1).trimEnd() + "…"
+}
+
+function formatIds(ids) {
+    const sorted = [...ids].sort((a, b) => a - b)
+    if (sorted.length === 0) return ""
+    if (sorted.length === 1) return String(sorted[0])
+    const contiguous = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1)
+    return contiguous ? `${sorted[0]}-${sorted[sorted.length - 1]}` : sorted.join(",")
+}
+
+// The one place a pending row becomes a knowledge-base entry — the single
+// !approve and the numbered !approve <spec> both route through it, so there is
+// a single commit + remove path to keep correct.
+async function approveRowById(id) {
+    const row = deps.reviewDB.prepare("SELECT * FROM pending WHERE id = ?").get(id)
+    if (!row) return { ok: false, gone: true }
+    const ok = await deps.commitKnowledge(row.question, row.answer)
+    if (!ok) return { ok: false, failed: true }
+    deps.reviewDelete(row.id)
+    return { ok: true, id: row.id }
+}
+
+// Turn "<spec>" (e.g. "1-3", "1,4", "2") into the ids behind the numbers the
+// admin just listed. Anything that isn't a clean number / comma list / range,
+// or any number that wasn't shown, resolves to a no-op the caller reports
+// (all-or-nothing: the caller changes nothing until every check passes).
+function resolveShownSelection(spec) {
+    if (shownBatch.length === 0) return { empty: true }
+    const parts = spec.split(",").map(p => p.trim()).filter(Boolean)
+    const wanted = []
+    for (const part of parts) {
+        const range = /^(\d+)\s*-\s*(\d+)$/.exec(part)
+        if (range) {
+            const a = Number(range[1]), b = Number(range[2])
+            for (let i = Math.min(a, b); i <= Math.max(a, b); i++) wanted.push(i)
+        } else if (/^\d+$/.test(part)) {
+            wanted.push(Number(part))
+        } else {
+            return { malformed: true }
+        }
+    }
+    if (wanted.length === 0) return { malformed: true }
+    const byN = new Map(shownBatch.map(e => [e.n, e.id]))
+    const bad = [...new Set(wanted.filter(n => !byN.has(n)))]
+    if (bad.length > 0) {
+        const nums = shownBatch.map(e => e.n)
+        return { rejected: true, bad, lo: Math.min(...nums), hi: Math.max(...nums) }
+    }
+    const seen = new Set(), ids = []
+    for (const n of wanted) { const id = byN.get(n); if (!seen.has(id)) { seen.add(id); ids.push(id) } }
+    return { ok: true, ids }
+}
+
 async function handleCommand(message, user, rawMsg) {
     if (!isAdminChannel(user, message)) return false
     const msg = rawMsg.trim()
@@ -40,7 +101,7 @@ async function handleCommand(message, user, rawMsg) {
             `!blacklist n !whitelist n !learning on/off\n` +
             `!group_allow [id] !group_block [id]\n` +
             `!learn_allow n !learn_block n\n` +
-            `!review !approve !reject !export_kb\n` +
+            `!review [2-10] !approve [1,3|2-5] !reject [1,3|2-5] !export_kb\n` +
             `!correct old|new\n` +
             `!backup !stats !context !clean_knowledge\n` +
             `!changet <chat|global> <seconds>\n` +
@@ -149,7 +210,25 @@ async function handleCommand(message, user, rawMsg) {
         return replyOrLog("⚠️ Specify a group ID or run this this command inside a group.")
     }
     // --- V6.5 commands ---
+    if (msg.startsWith("!review ")) {
+        const n = Number(msg.slice(8).trim())
+        if (!Number.isInteger(n) || n < 2 || n > 10) {
+            return replyOrLog("⚠️ !review takes a number from 2 to 10 (plain !review shows just one).")
+        }
+        const rows = deps.reviewDB.prepare("SELECT * FROM pending ORDER BY id ASC LIMIT ?").all(n)
+        if (rows.length === 0) return replyOrLog("📭 Review queue is empty.")
+        shownBatch = rows.map((row, i) => ({ n: i + 1, id: row.id }))
+        const lines = rows.map((row, i) =>
+            `${i + 1}. [#${row.id}] Q: ${clip(row.question, 60)} A: ${clip(row.answer, 80)}`)
+        const nums = shownBatch.map(e => e.n)
+        return replyOrLog(
+            `📋 Next ${rows.length} pending — reply !approve / !reject with the numbers (e.g. !approve 1-2):\n` +
+            lines.join("\n") +
+            `\n\nShown: ${nums[0]}–${nums[nums.length - 1]}`
+        )
+    }
     if (msg === "!review") {
+        shownBatch = []   // a fresh single show invalidates any listed numbers
         const row = deps.reviewNext()
         if (!row) return replyOrLog("📭 Review queue is empty.")
         setReviewCurrentId(row.id)
@@ -161,18 +240,41 @@ async function handleCommand(message, user, rawMsg) {
             `\nReply !approve to commit, !reject to discard.`
         )
     }
+    if (msg.startsWith("!approve ")) {
+        const picked = resolveShownSelection(msg.slice(9).trim())
+        if (picked.empty) return replyOrLog("⚠️ Nothing listed yet — use !review 2-10 first.")
+        if (picked.malformed) return replyOrLog("⚠️ Format: !approve <numbers> — e.g. !approve 1,3 or !approve 2-5")
+        if (picked.rejected) return replyOrLog(`⚠️ Unknown number${picked.bad.length > 1 ? "s" : ""} ${picked.bad.join(", ")} — shown ${picked.lo}–${picked.hi}. Nothing committed.`)
+        const committed = [], skipped = []
+        for (const id of picked.ids) {
+            const res = await approveRowById(id)
+            if (res.ok) committed.push(id); else skipped.push(id)
+        }
+        if (committed.length === 0) return replyOrLog("⚠️ Nothing committed — those entries are gone or already in the knowledge base.")
+        let out = `✅ Approved ${committed.length} (${committed.length === 1 ? "id" : "ids"} ${formatIds(committed)})`
+        if (skipped.length) out += `\n⚠️ ${skipped.length} left pending (gone or a duplicate).`
+        return replyOrLog(out)
+    }
     if (msg === "!approve") {
         if (!state.reviewCurrentId) return replyOrLog("⚠️ Nothing shown yet — use !review first.")
-        const row = deps.reviewDB.prepare("SELECT * FROM pending WHERE id = ?").get(state.reviewCurrentId)
-        if (!row) { state.reviewCurrentId = null; return replyOrLog("⚠️ Entry no longer exists.") }
-        const ok = await deps.commitKnowledge(row.question, row.answer)
-        if (ok) {
-            deps.reviewDelete(row.id)
-            state.reviewCurrentId = null
-            const next = deps.reviewNext()
-            return replyOrLog(`✅ Committed to knowledge base.${next ? `\n\nNext pending (#${next.id}):\nQ: ${next.question}\nA: ${next.answer}\n!approve / !reject` : "\nQueue is now empty."}`)
+        const res = await approveRowById(state.reviewCurrentId)
+        if (res.gone) { state.reviewCurrentId = null; return replyOrLog("⚠️ Entry no longer exists.") }
+        if (!res.ok) return replyOrLog("⚠️ Commit failed (likely a duplicate of an existing entry) — use !reject to discard it.")
+        state.reviewCurrentId = null
+        const next = deps.reviewNext()
+        return replyOrLog(`✅ Committed to knowledge base.${next ? `\n\nNext pending (#${next.id}):\nQ: ${next.question}\nA: ${next.answer}\n!approve / !reject` : "\nQueue is now empty."}`)
+    }
+    if (msg.startsWith("!reject ")) {
+        const picked = resolveShownSelection(msg.slice(8).trim())
+        if (picked.empty) return replyOrLog("⚠️ Nothing listed yet — use !review 2-10 first.")
+        if (picked.malformed) return replyOrLog("⚠️ Format: !reject <numbers> — e.g. !reject 1,3 or !reject 2-5")
+        if (picked.rejected) return replyOrLog(`⚠️ Unknown number${picked.bad.length > 1 ? "s" : ""} ${picked.bad.join(", ")} — shown ${picked.lo}–${picked.hi}. Nothing changed.`)
+        const removed = []
+        for (const id of picked.ids) {
+            if (deps.reviewDelete(id)) removed.push(id)
         }
-        return replyOrLog("⚠️ Commit failed (likely a duplicate of an existing entry) — use !reject to discard it.")
+        if (removed.length === 0) return replyOrLog("⚠️ Nothing discarded — those entries are already gone.")
+        return replyOrLog(`🗑️ Rejected ${removed.length} (${removed.length === 1 ? "id" : "ids"} ${formatIds(removed)})`)
     }
     if (msg === "!reject") {
         if (!state.reviewCurrentId) return replyOrLog("⚠️ Nothing shown yet — use !review first.")
