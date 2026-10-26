@@ -30,6 +30,16 @@ function bumpDigestPausedSkip() {
     } catch (e) { logError("digest.bumpDigestPausedSkip", "paused-skip counter failed", e) }
 }
 
+/* Counts chats the bot stood down in because the owner answered personally —
+   the daily digest shows the owner how often they took over. Bumped only on a
+   NEW activation, never on an extension of an already-active handoff. */
+function bumpDigestHandoff() {
+    try {
+        const ds = state.settings.digestState
+        ds.totals.handoffs = (ds.totals.handoffs || 0) + 1
+    } catch (e) { logError("digest.bumpDigestHandoff", "handoff counter failed", e) }
+}
+
 /* Counts bot replies the send guard suppressed (identical-text) or
    dropped (over the hourly cap + too old in the queue) — the daily digest shows
    the owner exactly which customers got silence. */
@@ -69,6 +79,7 @@ function buildDigestText() {
         `  • Quick       : ${t.quickReplies || 0}\n` +
         `Human-needed    : ${Object.values(ds.hnCategories || {}).reduce((s, n) => s + n, 0)}\n` +
         `Paused/DND skips: ${t.pausedSkips || 0}\n` +
+        `Owner handoffs  : ${t.handoffs || 0}\n` +
         `Guarded (H)     : ${t.identicalSuppressed || 0} identical-suppressed / ${t.rateDropped || 0} rate-capped drops\n` +
         `Top HN triggers : ${topHN}\n` +
         `New contacts    : ${(ds.newContacts || []).length}`
@@ -98,4 +109,4 @@ function startDigestTimer() {
     setInterval(() => { try { pushDigestIfDue() } catch (e) { logError("digest.startDigestTimer", "digest push failed", e, { quiet: true }) } }, 60000)
 }
 
-module.exports = { bumpDigest, bumpDigestMessage, bumpDigestPausedSkip, bumpDigestSendGuard, trackNewContact, buildDigestText, pushDigestIfDue, startDigestTimer }
+module.exports = { bumpDigest, bumpDigestMessage, bumpDigestPausedSkip, bumpDigestHandoff, bumpDigestSendGuard, trackNewContact, buildDigestText, pushDigestIfDue, startDigestTimer }
