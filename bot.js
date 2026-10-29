@@ -5,7 +5,7 @@
 ══════════════════════════════════════════════════════ */
 
 /* 1. Config loads settings + filesystem first (order matters). */
-const { VERSION, BRAND_NAME, PATHS, saveJSON, drainStateFileNotices } = require("./src/config")
+const { VERSION, BRAND_NAME, PATHS, saveJSON, drainStateFileNotices, DASHBOARD_TOKEN, DASHBOARD_PORT } = require("./src/config")
 const state = require("./src/state")
 
 /* 2. Databases (knowledge.db is wiped here for the V6.4 full-rebuild strategy). */
@@ -30,11 +30,25 @@ const { pingLLMStudio, startLLMWatchdog } = require("./src/llm")
 const { notifyAdmin, notifyAdminBatched, flushPending: flushPendingNotices, startNotifyBatchTimer } = require("./src/notify")
 const sendGuard = require("./src/sendGuard")
 const { logError } = require("./src/logging")
+const dashboardModule = require("./src/dashboard")
 const { onMessage } = require("./src/handler")
 const admin = require("./src/admin")
 const reconnect = require("./src/reconnect")
 
 /* 4. Wire cross-module dependencies (avoids circular imports). */
+
+/* Dashboard — local-only web UI (Phase 0). init() RETURNS the server
+   instance ({ start, stop, isRunning }) — it is a guest in this
+   process: with no DASHBOARD_TOKEN in .env it never opens its port
+   (fail-closed, loudly logged), and its stop() runs before the
+   databases close. getToken/getPort are injected so the auth path
+   stays fully testable offline (test/dashboard_test.js). */
+const dashboard = dashboardModule.init({
+    getToken: () => DASHBOARD_TOKEN,
+    getPort: () => DASHBOARD_PORT,
+    logError
+})
+
 initKnowledge({ notifyAdmin, notifyAdminBatched })
 admin.init({
     knowledgeDB: db.knowledgeDB,
@@ -207,6 +221,10 @@ async function shutdown(signal) {
     if (unsentReplies) console.log(`⚠️  ${unsentReplies}`)
 
     try { if (state.adminClient) await state.adminClient.destroy() } catch (e) { logError("shutdown", "client destroy failed", e, { quiet: true }) }
+    /* The dashboard stops BEFORE the databases close — its (future) data
+       routes read them, and a short grace period lets in-flight requests
+       finish before any straggler socket is forced shut. */
+    try { await dashboard.stop() } catch (e) { logError("shutdown", "dashboard stop failed", e, { quiet: true }) }
     try { db.closeAllDatabases() } catch (e) { logError("shutdown", "DB close failed", e, { quiet: true }) }
 
     console.log("👋 Shutdown complete.")
@@ -255,6 +273,7 @@ async function main() {
     }, 3000)
     await buildKnowledgeDB()
     await pingLLMStudio()
+    dashboard.start()   // comes up beside the QR-scan wait; never the only path to anything
     createAndBindClient().initialize()
 }
 

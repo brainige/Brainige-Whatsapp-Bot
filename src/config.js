@@ -17,6 +17,14 @@ const LLM_MODEL   = process.env.LLM_MODEL || "Qwen3-1.7B-Instruct"
 const LLM_MAX_TOKENS = 150
 const LLM_TIMEOUT    = 8000
 
+/* ── Web dashboard (Phase 0) ──
+   The local-only dashboard is a passenger inside this process — it
+   listens on 127.0.0.1 with the token from .env. Missing/empty token
+   means the dashboard NEVER opens its port (fail-closed, loud log).
+   Neither value is ever printed, logged to a response, or sent off-PC. */
+const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || ""
+const DASHBOARD_PORT  = Number(process.env.DASHBOARD_PORT) || 7800
+
 const CONVO_TTL      = 600000
 const TOPIC_SHIFT_TTL = 45000
 const LAST_MSG_TTL    = 600000
@@ -477,6 +485,7 @@ _configFullyLoaded = true
 
 module.exports = {
     VERSION, ADMIN, VT_API_KEY, LLM_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_TIMEOUT,
+    DASHBOARD_TOKEN, DASHBOARD_PORT,
     CONVO_TTL, TOPIC_SHIFT_TTL, LAST_MSG_TTL,
     GROUP_CONFIDENCE_THRESHOLD, THRESHOLD_HIGH, THRESHOLD_MEDIUM,
     LLM_LEARN_MAX_HYBRID, VT_RATE_LIMIT, VT_RATE_WINDOW, VT_TIMEOUT_MS, HN_SEM_THRESHOLD,

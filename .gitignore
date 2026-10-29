@@ -29,6 +29,9 @@ Bot Reviews/
 node_modules/
 *.tmp
 
+# Dashboard frontend build output (rebuilt locally with npm run build:dashboard)
+src/dashboard/dist/
+
 # OS junk
 Thumbs.db
 desktop.ini
