@@ -184,8 +184,15 @@ async function main() {
         await d.stop()
     }
 
-    /* ── 4. Shutdown grace: an idle keep-alive socket must not hang ─── */
-    console.log("\n── 4. Clean shutdown under an idle keep-alive socket ──")
+    /* ── 4. Shutdown grace ─────────────────────────────────────────────
+       Two socket shapes must both end in a clean, bounded stop():
+       (a) an idle keep-alive, which is a browser tab left open. Node
+           now closes idle connections itself when close() is called,
+           so stop() must NOT sit out the grace window here;
+       (b) a stuck in-flight request, where server.close() alone would
+           wait forever, so the grace timer must fire and force the
+           socket closed. */
+    console.log("\n── 4. Clean shutdown: idle socket and stuck in-flight socket ──")
     {
         const d = dashboard.init({
             getToken: () => TOKEN,
@@ -196,15 +203,38 @@ async function main() {
         const r = await d.start()
         const idle = net.connect({ port: r.port, host: "127.0.0.1" })
         await new Promise(res => idle.on("connect", res))
-        /* nothing is ever sent on it — a browser tab left open looks
-           exactly like this. server.close() alone would wait forever. */
+        /* nothing is ever sent on it, exactly like a browser tab left
+           open in the background. */
         const t0 = Date.now()
         const stopResult = await d.stop()
-        const elapsed = Date.now() - t0
+        const idleMs = Date.now() - t0
         check("stop() resolved with an idle socket attached", stopResult.stopped === true)
-        check(`stop() finished inside the grace window (${elapsed}ms < 2500ms)`, elapsed < 2500)
-        check("stop() actually waited for the grace period (>= ~400ms)", elapsed >= 350)
+        check(`an idle socket no longer holds shutdown open (${idleMs}ms, grace is 400ms)`, idleMs < 350)
         idle.destroy()
+    }
+    {
+        const d = dashboard.init({
+            getToken: () => TOKEN,
+            getPort: () => 0,
+            logError: (loc, ctx, err) => captured.push(`[${loc}] ${ctx} ${err ? (err.message || err) : ""}`),
+            graceMs: 400
+        })
+        const r = await d.start()
+        const stuck = net.connect({ port: r.port, host: "127.0.0.1" })
+        await new Promise(res => stuck.on("connect", res))
+        /* a request that never finishes: the headers are cut short, so
+           the parser keeps the connection open and close() would hang. */
+        stuck.write("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+        /* the server must be holding those bytes before close() runs,
+           otherwise it still looks like an idle connection to Node. */
+        await new Promise(res => setTimeout(res, 200))
+        const t1 = Date.now()
+        const stopResult = await d.stop()
+        const stuckMs = Date.now() - t1
+        check("stop() resolved with a stuck in-flight socket", stopResult.stopped === true)
+        check(`the grace window ran before the force-close (${stuckMs}ms >= ~400ms)`, stuckMs >= 350)
+        check(`the force-close kept shutdown bounded (${stuckMs}ms < 2500ms)`, stuckMs < 2500)
+        stuck.destroy()
     }
 
     /* ── 5. Port busy: a second server fails closed, loudly ─────────── */
