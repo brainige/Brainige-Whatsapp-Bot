@@ -28,7 +28,7 @@ const { logIncoming, logBotReply, logOutgoing, logHumanNeeded, logAdminActivity,
 const { markProcessed, preRegisterBotText, trackBotReply, isBotSentText, getLastMessage, setLastMessage } = require("./tracking")
 const { notifyAdmin, notifyAdminBatched } = require("./notify")
 const sendGuard = require("./sendGuard")
-const { extractURLs, stripURLs, checkURL, getContactName, appendLinkLedger, buildLinkEntry } = require("./security")
+const { extractURLs, stripURLs, checkURL, getContactName, appendLinkLedger, buildLinkEntry, URL_SCAN_MAX_CHARS } = require("./security")
 const { callLLM } = require("./llm")
 const { checkAndTriggerPause, isUserPaused, isGloballyPaused, isInDND, getPauseDuration } = require("./pause")
 const { activateHandoff, isHandoffActive } = require("./handoff")
@@ -377,12 +377,27 @@ async function onMessage(message) {
                             logIncoming(user, rawBody || "[no caption]", `too_large_${fmtMB(bytes)}_not_saved`, isGroup ? groupName : undefined, replyToLabel)
                             console.log(`⚠️  Media from ${getNumber(user)} downloaded but NOT saved — ${fmtMB(bytes)} is over the ${fmtMB(MEDIA_MAX_BYTES)} cap.`)
                         } else {
-                            const ext = (media.mimetype || "").split("/")[1]?.split(";")[0] || "bin"
+                            /* S1 fix: the extension comes from the SENDER-declared
+                               mimetype. Keep letters/digits ONLY — every separator
+                               (/, \, ..) is stripped, so the file name can never
+                               steer the write outside this chat's folder. */
+                            const rawExt = (media.mimetype || "").split("/")[1]?.split(";")[0] || "bin"
+                            const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, "").substring(0, 12) || "bin"
                             const mediaDir = isGroup ? path.join(PATHS.MEDIA_GROUPS, groupName || getNumber(user)) : path.join(PATHS.MEDIA_CHATS, getNumber(user))
                             fs.ensureDirSync(mediaDir)
-                            const fname = `${getNumber(user)}_${Date.now()}.${ext}`
-                            fs.writeFileSync(path.join(mediaDir, fname), Buffer.from(media.data, "base64"))
-                            logIncoming(user, rawBody || "[no caption]", `${fname}`, isGroup ? groupName : undefined, replyToLabel)
+                            /* S2 fix: per-chat file budget — one sender must not be
+                               able to fill the disk with files. */
+                            const MEDIA_FILES_PER_CHAT_MAX = 400
+                            let filesHere = 0
+                            try { filesHere = fs.readdirSync(mediaDir).length } catch { }
+                            if (filesHere >= MEDIA_FILES_PER_CHAT_MAX) {
+                                logIncoming(user, rawBody || "[no caption]", `media_quota_${filesHere}_skipped`, isGroup ? groupName : undefined, replyToLabel)
+                                console.log(`⚠️  Media from ${getNumber(user)} skipped — this chat already holds ${filesHere} files (cap ${MEDIA_FILES_PER_CHAT_MAX}); nothing downloaded.`)
+                            } else {
+                                const fname = `${getNumber(user)}_${Date.now()}.${ext}`
+                                fs.writeFileSync(path.join(mediaDir, fname), Buffer.from(media.data, "base64"))
+                                logIncoming(user, rawBody || "[no caption]", `${fname}`, isGroup ? groupName : undefined, replyToLabel)
+                            }
                         }
                     } else {
                         logIncoming(user, rawBody || "[media received]", "download_failed", isGroup ? groupName : undefined, replyToLabel)
@@ -429,6 +444,14 @@ async function onMessage(message) {
         trackNewContact(user)
 
         const groupEngaged = isGroup ? await shouldProcessGroupMessage(message, rawBody) : true
+        /* S2 fix (ReDoS): only the first URL_SCAN_MAX_CHARS characters of a
+           message are scanned for links. A message longer than that gets its
+           head scanned and the owner is told — the tail is never silently
+           dropped from the audit trail. */
+        if (rawBody.length > URL_SCAN_MAX_CHARS && (!isGroup || groupEngaged)) {
+            notifyAdminBatched("Long message", `📄 Message from ${getNumber(user)}${isGroup ? ` in ${groupName || "group"}` : ""} is ${rawBody.length} chars — only the first ${URL_SCAN_MAX_CHARS} were scanned for links.`)
+            logAdminActivity(`[LONG-MSG] ${getNumber(user)} ${rawBody.length} chars — link scan limited to the first ${URL_SCAN_MAX_CHARS}`)
+        }
         const urls = (isGroup && !groupEngaged) ? [] : extractURLs(rawBody)
 
         // A2 (approved): link checks are INVISIBLE to contacts.

@@ -10,6 +10,7 @@ function getNumber(jid) {
 function sanitizeFolderName(name) {
     return (name || "").toString()
         .replace(/[\\/:*?"<>|]/g, "")
+        .replace(/^\.+$/, "")          // dot-only names ("..", "...") resolve to a PARENT directory — never allow them
         .replace(/\s+/g, " ")
         .trim()
         .substring(0, 60) || "unnamed_group"

@@ -262,6 +262,20 @@ async function main() {
         stamps.length === 3 && scheduledAt >= 3 * 60 - 20 && scheduledAt <= 3 * 60 + 50)
     security.vtInitForTests({ minIntervalMs: 1 })
 
+    /* ── S2 fix: the wait QUEUE is bounded (not just the call spacing) ── */
+    console.log("\n── VirusTotal wait queue is bounded ──")
+    state.vtBucket.nextAllowedAt = 0   // clean limiter (the spacing test above left it mid-schedule)
+    state.vtBucket.waiters = 0
+    security.vtInitForTests({ minIntervalMs: 150 })   // small so the parked waiters resolve in seconds, not minutes
+    const slots = await Promise.all(Array.from({ length: 25 }, () => security.vtAcquire()))
+    const acquired = slots.filter(Boolean).length
+    check("the first caller goes immediately, the next 20 park as waiters (21 slots granted)", acquired === 21)
+    check("overflow callers are REFUSED (resolve false), not parked forever",
+        slots.filter(s => s === false).length === 4)
+    state.vtBucket.nextAllowedAt = 0
+    state.vtBucket.waiters = 0
+    security.vtInitForTests({ minIntervalMs: 1 })
+
     /* ═══════════ JID → display-name cache ═══════════ */
     console.log("\n── JID → display-name cache (24h TTL) ──")
     let contactLookups = 0

@@ -28,9 +28,15 @@ function setReviewCurrentId(id) { state.reviewCurrentId = id }
 // Kept module-local on purpose — it never outlives the process.
 let shownBatch = []
 
-function clip(text, max) {
-    const s = String(text == null ? "" : text)
-    return s.length <= max ? s : s.slice(0, max - 1).trimEnd() + "…"
+/* Flags that force a second look before !approve — a committed answer
+   becomes an auto-reply to EVERY future customer. */
+function reviewFlags(text) {
+    const t = String(text || "")
+    const flags = []
+    if (/(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|io|xyz|link|top|in|info|biz)\b)/i.test(t)) flags.push("⚠️ link")
+    if (/\b(bkash|nagad|rocket|upi|paytm|payment|account no|a\/c|card no)\b/i.test(t)) flags.push("⚠️ payment")
+    if (/\d[\d\s-]{8,}\d/.test(t)) flags.push("⚠️ long-number")
+    return flags.length ? `   [${flags.join(" ")}]` : ""
 }
 
 function formatIds(ids) {
@@ -220,8 +226,10 @@ async function handleCommand(message, user, rawMsg) {
         const rows = deps.reviewDB.prepare("SELECT * FROM pending ORDER BY id ASC LIMIT ?").all(n)
         if (rows.length === 0) return replyOrLog("📭 Review queue is empty.")
         shownBatch = rows.map((row, i) => ({ n: i + 1, id: row.id }))
+        // S4 fix: the FULL question and answer are shown — clipping hid
+        // payloads from the human gate that !approve commits to the brain.
         const lines = rows.map((row, i) =>
-            `${i + 1}. [#${row.id}] Q: ${clip(row.question, 60)} A: ${clip(row.answer, 80)}`)
+            `${i + 1}. [#${row.id}] Q: ${row.question}${reviewFlags(row.question)}\nA: ${row.answer}${reviewFlags(row.answer)}`)
         const nums = shownBatch.map(e => e.n)
         return replyOrLog(
             `📋 Next ${rows.length} pending — reply !approve / !reject with the numbers (e.g. !approve 1-2):\n` +

@@ -49,7 +49,7 @@ const state = {
 
     // URL security
     urlCache: new Map(),
-    vtBucket: { nextAllowedAt: 0 },   // strict spacing — one VirusTotal call per VT_MIN_INTERVAL (free-tier safe; was a burst-prone bucket)
+    vtBucket: { nextAllowedAt: 0, waiters: 0 },   // strict spacing — one VirusTotal call per VT_MIN_INTERVAL (free-tier safe; was a burst-prone bucket); waiters = bounded queue depth
 
     // counters / misc
     knowledgeHitCount: 0,

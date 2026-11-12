@@ -83,6 +83,16 @@ function buildHandler(ctx) {
                 return
             }
 
+            /* S10 fix: Host allowlist (DNS-rebinding defense-in-depth). The
+               token already makes a rebound browser harmless; this also
+               refuses any request claiming a foreign Host. Loopback names
+               only, optional port. */
+            const hostName = String((req.headers && req.headers.host) || "").toLowerCase()
+            if (!/^(127\.0\.0\.1|localhost|\[::1\]|\[::ffff:127\.0\.0\.1\])(:\d+)?$/.test(hostName)) {
+                sendJson(res, 403, { ok: false, error: "forbidden_host" })
+                return
+            }
+
             /* GET /health — liveness probe (still token-protected). */
             if (pathname === "/health") {
                 if (req.method !== "GET") { sendJson(res, 405, { ok: false, error: "method_not_allowed" }); return }

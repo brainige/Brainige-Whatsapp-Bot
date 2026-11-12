@@ -18,7 +18,9 @@ function isAdminChannel(user, message) {
         const chat = message.to || message.from
         if (state.selfChatId && chat === state.selfChatId) return true
     }
-    if (ADMIN && user === ADMIN) return true
+    // A group JID must NEVER match the admin number — otherwise every member
+    // of a misconfigured group could run owner commands.
+    if (ADMIN && user === ADMIN && !user.endsWith("@g.us")) return true
     return false
 }
 

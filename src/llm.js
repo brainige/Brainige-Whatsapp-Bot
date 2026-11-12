@@ -69,7 +69,10 @@ function buildLLMTurnHistory(chatId, folderName) {
     const turns = []
 
     for (const line of lines) {
-        if (line.includes("--- TOPIC SHIFT ---")) {
+        /* S3 fix: the marker must be the WHOLE line (the writer's own
+           shape) — a message that merely CONTAINS the words inside a
+           flattened line stays ordinary chat text. */
+        if (/^\[[^\]]+\]\s*---\s*TOPIC SHIFT ---\s*$/.test(line) || line.trim() === "--- TOPIC SHIFT ---") {
             turns.push({ role: "system", content: "A topic shift happened here. Focus mainly on the conversation below this point." })
             continue
         }

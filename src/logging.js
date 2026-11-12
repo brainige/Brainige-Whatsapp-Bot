@@ -9,6 +9,13 @@ const { getNumber } = require("./util")
 
 const LOG_AGE_CAP_MS = 6 * 30 * 24 * 60 * 60 * 1000 // ~6 months
 
+/* S6 fix: one logged line = ONE record. Newlines inside a message become a
+   visible ⏎ marker so a message can't forge extra lines in the owner's logs
+   (logMiss has always flattened; the chat/HN/admin logs now do too). */
+function flattenLog(s) {
+    return String(s == null ? "" : s).replace(/[\r\n]+/g, " ⏎ ")
+}
+
 /* The unanswered-question log ("what should the bot be taught next"). Kept
    here, next to its writer, and read back by src/misses.js. */
 const MISSES_LOG = "./logs/misses.txt"
@@ -29,9 +36,9 @@ function writeToLog(jid, direction, msg, mediaNote, folderName, replyTo) {
     if (direction === "IN") label = `[THEM → YOU ]`
     else if (direction === "BOT") label = `[BOT  → THEM]`
     else label = `[YOU  → THEM]`
-    let line = `${ts}  ${label}  ${msg}`
-    if (replyTo) line += `   [↩ replying to: ${replyTo}]`
-    if (mediaNote) line += `   [MEDIA: ${mediaNote}]`
+    let line = `${ts}  ${label}  ${flattenLog(msg)}`
+    if (replyTo) line += `   [↩ replying to: ${flattenLog(replyTo)}]`
+    if (mediaNote) line += `   [MEDIA: ${flattenLog(mediaNote)}]`
     try { fs.appendFileSync(file, line + "\n") } catch (e) { logError("logging.writeToLog", "chat log append failed", e) }
     trimLogIfOld(file)
 }
@@ -65,7 +72,7 @@ function trimLogIfOld(file) {
 function logHumanNeeded(jid, rawMsg, reason) {
     const ts = new Date().toISOString()
     const num = getNumber(jid)
-    const line = `${ts}  |  FROM: ${num}  |  REASON: ${reason}  |  MSG: ${rawMsg}`
+    const line = `${ts}  |  FROM: ${num}  |  REASON: ${flattenLog(reason)}  |  MSG: ${flattenLog(rawMsg)}`
     try { fs.appendFileSync(PATHS.LOG_HN, line + "\n") } catch (e) { logError("logging.logHumanNeeded", "human-needed log append failed", e) }
     console.log(`⚠️  HUMAN NEEDED [${num}]: ${rawMsg.substring(0, 80)}`)
 }
@@ -90,7 +97,7 @@ function logMiss(jid, text, reason) {
 
 function logAdminActivity(text) {
     const ts = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-    try { fs.appendFileSync(PATHS.LOG_ADMIN, `${ts}  ${text}\n`) } catch (e) { logError("logging.logAdminActivity", "admin log append failed", e) }
+    try { fs.appendFileSync(PATHS.LOG_ADMIN, `${ts}  ${flattenLog(text)}\n`) } catch (e) { logError("logging.logAdminActivity", "admin log append failed", e) }
 }
 
 /* ── logError — no failure is ever silent ─────────────────────

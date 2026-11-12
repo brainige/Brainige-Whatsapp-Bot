@@ -127,8 +127,8 @@ async function main() {
         r.reply.includes(`1. [#${id1}]`) && r.reply.includes(`2. [#${id2}]`) && r.reply.includes(`3. [#${id3}]`) &&
         !r.reply.includes(`[#${ids[3]}]`) && !r.reply.includes(`[#${ids[4]}]`))
     check("each line shows Q and A", r.reply.includes(seeds[0].q) && r.reply.includes(seeds[0].a))
-    check("the long question + answer are clipped in the list",
-        r.reply.includes("…") && !r.reply.includes("x".repeat(80)) && !r.reply.includes("y".repeat(120)))
+    check("the long question + answer are shown IN FULL (clipping hid payloads from the !approve gate)",
+        r.reply.includes("x".repeat(80)) && r.reply.includes("y".repeat(120)) && !r.reply.includes("…"))
 
     /* ── !approve 1-2 → commit + remove; row 3 stays ── */
     console.log("\n── !approve 1-2 commits two, leaves the third ──")
@@ -182,6 +182,23 @@ async function main() {
     check("!review 4 lists all four consecutive rows", r.reply.includes(`1. [#${fids[0]}]`) && r.reply.includes(`4. [#${fids[3]}]`))
     r = await run("!reject 1,3")   // fids[0] and fids[2] -> a gap -> comma list
     check("rejecting numbers 1 and 3 reuses the comma id form", r.reply.includes("Rejected 2") && r.reply.includes(`ids ${fids[0]},${fids[2]}`))
+
+    /* ── S4 fix: the review list flags risky answers before !approve ── */
+    console.log("\n── review list flags link/payment answers ──")
+    reviewDB.prepare("DELETE FROM pending WHERE question LIKE '%testi%'").run()
+    seed([
+        { q: "testi flag how to pay", a: "testi flag pay at https://evil-site.xyz/checkout now" },
+        { q: "testi flag send money where", a: "testi flag send to bKash 01712345678 please" },
+        { q: "testi flag plain entry", a: "testi flag plain answer here" }
+    ])
+    r = await run("!review 3")
+    check("an answer containing a link is flagged ⚠️ link", r.reply.includes("⚠️ link"))
+    check("an answer containing a payment number is flagged ⚠️ payment / long-number",
+        r.reply.includes("⚠️ payment") || r.reply.includes("⚠️ long-number"))
+    check("the flag carries the FULL answer text (nothing clipped)",
+        r.reply.includes("https://evil-site.xyz/checkout") && r.reply.includes("01712345678"))
+    check("a plain answer carries no flag", r.reply.includes("testi flag plain answer here"))
+    r = await run("!reject 1-3")
 
     /* ── cleanup: leave the project pristine ── */
     console.log("\n── cleanup ──")

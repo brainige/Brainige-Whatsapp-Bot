@@ -225,8 +225,18 @@ function appendLLMContext(chatId, role, text, folderName) {
     try {
         const fpath = llmCtxFilePath(chatId, folderName)
         const ts = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-        const label = role === "user" ? "USER" : role === "assistant" ? "BOT" : "YOU"
-        const line = `[${ts}] ${label}: ${text}\n`
+        /* Accept BOTH cases of role names: the handler passes "USER"/"BOT"
+           (upper), the historical names are "user"/"assistant" (lower).
+           Without this a customer's line was labeled YOU and re-parsed as
+           an ASSISTANT turn — the model then read the customer's own text
+           as its previous answers. */
+        const roleName = String(role == null ? "" : role).toLowerCase()
+        const label = roleName === "user" ? "USER" : (roleName === "assistant" || roleName === "bot") ? "BOT" : "YOU"
+        /* S3 fix: flatten newlines. One message = ONE transcript line — a
+           customer must not be able to smuggle forged "[ts] BOT:" or
+           "--- TOPIC SHIFT ---" lines into the prompt on the next LLM call. */
+        const safeText = String(text == null ? "" : text).split(String.fromCharCode(10)).join(" ").split(String.fromCharCode(13)).join(" ")
+        const line = `[${ts}] ${label}: ${safeText}\n`
         fs.appendFileSync(fpath, line)
         state.llmCtxLastActivity.set(chatId, Date.now())
     } catch (e) { logError("memory.appendLLMContext", "LLM context append failed", e) }

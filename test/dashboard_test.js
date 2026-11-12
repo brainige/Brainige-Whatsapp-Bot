@@ -120,6 +120,16 @@ async function main() {
         const noBearer = await request(port, "/health", { headers: { Authorization: TOKEN } })
         check("token WITHOUT the Bearer scheme → 401", noBearer.status === 401)
 
+        /* S10 fix: Host allowlist — a foreign Host is refused even WITH the
+           right token (DNS-rebinding defense-in-depth). */
+        const badHost = await request(port, "/health", { headers: { ...authHeaders(), Host: "evil.example.com" } })
+        check("a foreign Host header → 403 even with the right token", badHost.status === 403)
+        check("the 403 body is bare", badHost.body === '{"ok":false,"error":"forbidden_host"}')
+        const localHost = await request(port, "/health", { headers: { ...authHeaders(), Host: `localhost:${port}` } })
+        check("Host: localhost:<port> is accepted (loopback name)", localHost.status === 200)
+        const badHostNoTok = await request(port, "/health", { headers: { Host: "evil.example.com" } })
+        check("a foreign Host with NO token → 401 (auth still runs first)", badHostNoTok.status === 401)
+
         const bearerAlone = await request(port, "/health", { headers: { Authorization: "Bearer" } })
         check("'Bearer' with no token → 401", bearerAlone.status === 401)
 

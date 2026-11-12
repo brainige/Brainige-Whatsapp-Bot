@@ -278,6 +278,8 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error("❌ Fatal startup error:", err)
+    // S7 fix: err.MESSAGE only — a raw axios error object carries its request
+    // config (headers, incl. the VirusTotal x-apikey) and must never be dumped.
+    console.error("❌ Fatal startup error:", err && err.message ? err.message : String(err))
     process.exit(1)
 })

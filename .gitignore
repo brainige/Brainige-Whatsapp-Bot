@@ -21,6 +21,14 @@ Bot Reviews/
 .env
 .env.backup*
 
+# Key / certificate material — never commit
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
 # SQLite sidecars (WAL mode) — rebuilt automatically, never needed in git
 *.db-wal
 *.db-shm

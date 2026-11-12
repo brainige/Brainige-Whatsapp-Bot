@@ -21,25 +21,39 @@ const { logError } = require("./logging")
 const URL_CACHE_MAX = 500
 const vtBucket = state.vtBucket
 
+/* S2 fix (ReDoS): the scan budget. Only the first URL_SCAN_MAX_CHARS
+   characters of a message are scanned for links/e-mails — normal links
+   live in the first few hundred characters, and this keeps one huge
+   spam message from blocking the single Node event loop. The handler
+   tells the owner when a message crossed this budget. */
+const URL_SCAN_MAX_CHARS = 4000
+
 /* A REAL rate limiter, free-tier safe: outbound VirusTotal calls are strictly
    spaced one per VT_MIN_INTERVAL, so a burst of links can NEVER fire together
    and blow the free 4/minute quota (the old bucket let every queued caller
    through at once → 429s → silent fail-opens). Waiting callers are served in
-   call order — first link ~immediately, later ones spaced. */
+   call order — first link ~immediately, later ones spaced. The wait QUEUE is
+   bounded (VT_MAX_WAITERS): past the cap, callers resolve false and the caller
+   ledgers the link "not_checked" instead of parking a timer per link. */
 let vtMinIntervalMs = VT_RATE_WINDOW / VT_RATE_LIMIT   // 60s / 3 = one call per 20s
+const VT_MAX_WAITERS = 20
 function vtInitForTests(overrides) { if (overrides && overrides.minIntervalMs) vtMinIntervalMs = overrides.minIntervalMs }
 
+/* Resolves TRUE when a call slot was acquired, FALSE when the wait queue is
+   already at VT_MAX_WAITERS (the caller must not scan). */
 function vtAcquire() {
     return new Promise(resolve => {
         const now = Date.now()
         if (now >= vtBucket.nextAllowedAt) {
             vtBucket.nextAllowedAt = now + vtMinIntervalMs
-            resolve()
+            resolve(true)
             return
         }
         const wait = vtBucket.nextAllowedAt - now
+        if ((vtBucket.waiters || 0) >= VT_MAX_WAITERS) { resolve(false); return }
+        vtBucket.waiters = (vtBucket.waiters || 0) + 1
         vtBucket.nextAllowedAt += vtMinIntervalMs
-        setTimeout(resolve, wait)
+        setTimeout(() => { vtBucket.waiters = Math.max(0, (vtBucket.waiters || 0) - 1); resolve(true) }, wait)
     })
 }
 
@@ -70,7 +84,11 @@ const BARE_URL_TLDS = [
 const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const SHORTENER_RE = new RegExp(`(?:${URL_SHORTENERS.map(escRe).join("|")})(?:/[^\\s<>"']*)?`, "gi")
 const BARE_DOMAIN_RE = new RegExp(`\\b[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9-]+)*\\.(?:${BARE_URL_TLDS.join("|")})(?:/[^\\s<>"']*)?`, "gi")
-const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gi
+/* Bounded flat pattern (no catastrophic backtracking): the local part is
+   length-capped, so a long run of dots/hyphens without an "@" can no longer
+   make the engine re-try every start position — one 64KB spam message used
+   to freeze the whole bot for seconds per pass. */
+const EMAIL_RE = /[\w.+-]{1,64}@[\w.-]{1,255}/gi
 
 function normalizeURL(raw) {
     let s = String(raw || "").trim()
@@ -94,6 +112,8 @@ function urlDedupeKey(normalized) {
    stripped) and de-duplicated — ready for scanning and the ledger. */
 function extractURLs(text) {
     if (!text) return []
+    let masked = String(text)
+    if (masked.length > URL_SCAN_MAX_CHARS) masked = masked.slice(0, URL_SCAN_MAX_CHARS)   // S2 fix: the scan budget
     const found = []
     const seen = new Set()
     const add = raw => {
@@ -104,7 +124,6 @@ function extractURLs(text) {
         seen.add(key)
         found.push(n)
     }
-    let masked = String(text)
     masked = masked.replace(EMAIL_RE, " ")   // e-mail ≠ link
     masked = masked.replace(/(?:https?:\/\/|www\.)[^\s<>"]+/gi, m => { add(m); return " " })
     masked = masked.replace(SHORTENER_RE, m => { add(m); return " " })
@@ -117,6 +136,7 @@ function extractURLs(text) {
 function stripURLs(text) {
     if (!text) return ""
     let out = String(text)
+    if (out.length > URL_SCAN_MAX_CHARS) out = out.slice(0, URL_SCAN_MAX_CHARS)   // S2 fix: same budget
     out = out.replace(EMAIL_RE, " ")
     out = out.replace(/(?:https?:\/\/|www\.)[^\s<>"]+/gi, " ")
     out = out.replace(SHORTENER_RE, " ")
@@ -217,7 +237,14 @@ async function checkURL(url, sourceLabel, senderJid, contactName, chatType, chat
         state.urlCache.delete(lurl)
     }
 
-    await vtAcquire()
+    const vtSlot = await vtAcquire()
+    if (!vtSlot) {
+        /* The bounded wait queue is full — this link is NOT scanned.
+           Ledger it and tell the owner immediately (never silent). */
+        appendLinkLedger(buildLinkEntry(url, senderJid, contactName, chatType, chatName, "not_checked"))
+        notifyAdmin(`⚠️ VirusTotal wait queue is full — a link from ${sourceLabel || "a sender"} was NOT scanned (ledgered not_checked):\n${url}`)
+        return true
+    }
 
     const MAX_RETRIES = 3
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -251,14 +278,15 @@ async function checkURL(url, sourceLabel, senderJid, contactName, chatType, chat
             if (attempt < MAX_RETRIES) await sleep(1000 * Math.pow(2, attempt - 1))
         }
     }
-    // All retries failed → ledger marks not_checked; admin notified (contact sees nothing)
+    // All retries failed → ledger marks not_checked; admin notified IMMEDIATELY
+    // (not batched — a failed safety check must be visible now, not in 5 min).
     appendLinkLedger(buildLinkEntry(url, senderJid, contactName, chatType, chatName, "not_checked"))
     console.log(`⚠️  VT: All retries failed for ${lurl.substring(0, 60)} — allowing (fail open)`)
-    notifyAdminBatched("Link check failures", `⚠️ VirusTotal failed (allowing, fail-open): ${url}${sourceLabel ? ` — from ${sourceLabel}` : ""}`)
+    notifyAdmin(`🚨 VirusTotal unreachable (fail-open): this link was NOT scanned:\n${url}${sourceLabel ? `\nFrom: ${sourceLabel}` : ""}\nIt was allowed through — treat unknown links with care.`)
     return true
 }
 
 module.exports = {
     vtAcquire, vtInitForTests, extractURLs, stripURLs, isTrustedURL, getHostname,
-    getContactName, appendLinkLedger, buildLinkEntry, checkURL
+    getContactName, appendLinkLedger, buildLinkEntry, checkURL, URL_SCAN_MAX_CHARS
 }
