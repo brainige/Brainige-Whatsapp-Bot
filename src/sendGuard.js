@@ -72,16 +72,24 @@ function recordIdentical(chatId, text) {
     identicalLog.set(k, arr)
 }
 
+function taskAuthorized(task) {
+    if (typeof task.canSend !== "function") return true
+    try { return task.canSend() } catch (e) {
+        logError("sendGuard.taskAuthorized", "authorization recheck failed — dropping reply", e)
+        return false
+    }
+}
+
 /* The single entry point for customer replies. `run` performs the ACTUAL send
    plus ALL post-send bookkeeping (log rows, DB writes, digest counters) so a
    queued or dropped reply leaves the conversation record and counters
    truthful — nothing is logged as sent until it really is. */
-function guardCustomerReply(chatId, text, run) {
+function guardCustomerReply(chatId, text, run, canSend) {
     if (identicalSentCount(chatId, text) + identicalQueuedCount(chatId, text) >= knobs.identicalHourCap) {
         reportDrop({ chatId, text, reason: "identical_suppressed" })
         return { sent: false, reason: "identical_suppressed", queued: false }
     }
-    pending.push({ chatId, text, enqueueAt: Date.now(), run })
+    pending.push({ chatId, text, enqueueAt: Date.now(), run, canSend })
     pump()
     return { sent: false, reason: "queued_or_sending", queued: true }
 }
@@ -104,6 +112,11 @@ async function pump() {
             const wait = Math.max(0, lastSendAt + gap - Date.now())
             if (wait > 0) await sleep(wait)
             if (hourCount() >= knobs.hourlyCap) break   // re-check after the sleep
+            if (!taskAuthorized(task)) {
+                pending.shift()
+                reportDrop({ chatId: task.chatId, text: task.text, reason: "authorization_revoked" })
+                continue
+            }
             pending.shift()
             lastSendAt = Date.now()
             sendTimes.push(lastSendAt)

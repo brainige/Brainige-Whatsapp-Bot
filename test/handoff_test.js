@@ -53,6 +53,7 @@ async function main() {
     const { PATHS } = require("../src/config")
     const snapSettings = snapshotFile(PATHS.SETTINGS)
     const snapSettingsBak = snapshotFile(PATHS.SETTINGS + ".bak")
+    const snapProcessedIds = snapshotFile(PATHS.PROCESSED_IDS)
 
     const state = require("../src/state")
     const handoff = require("../src/handoff")
@@ -133,11 +134,47 @@ async function main() {
     check("the digest text shows the owner-handoff line", digest.buildDigestText().includes("Owner handoffs"))
     state.settings.digestState = dsBefore   // restore in-memory counters (the file is restored at cleanup)
 
+    /* ── 7. real handler: handoff is independent of learning eligibility ── */
+    console.log("\n── 7. owner handoff through the real handler ──")
+    const { onMessage } = require("../src/handler")
+    const learningBefore = state.settings.learning
+    state.adminClient = null
+    const ownerReply = (id, body, user) => ({
+        id: { _serialized: id }, body, fromMe: true, from: user, to: user,
+        hasMedia: false, type: "chat", hasQuotedMsg: false,
+        reply: async () => ({ id: { _serialized: "X" } }),
+        getChat: async () => ({ name: null }), getQuotedMessage: async () => null
+    })
+    state.settings.learning = true
+    await onMessage(ownerReply("TEST_HANDOFF_SHORT", "ok", "0000000007@c.us"))
+    check("a short owner reply still activates handoff", state.handoffUntil.has("0000000007@c.us"))
+    state.settings.learning = false
+    await onMessage(ownerReply("TEST_HANDOFF_NO_LEARN", "owner taking over with learning off", "0000000008@c.us"))
+    check("disabled learning does not disable owner handoff", state.handoffUntil.has("0000000008@c.us"))
+    state.settings.learning = learningBefore
+
     /* ── cleanup: leave the project pristine ── */
     console.log("\n── cleanup ──")
     state.handoffUntil.clear()
+    await sleep(80)
     restoreFile(PATHS.SETTINGS, snapSettings)
     restoreFile(PATHS.SETTINGS + ".bak", snapSettingsBak)
+    restoreFile(PATHS.PROCESSED_IDS, snapProcessedIds)
+    const { convoDB } = require("../src/db")
+    try { convoDB.prepare("DELETE FROM conversations WHERE user IN ('0000000007@c.us', '0000000008@c.us')").run() } catch { }
+    for (const f of [PATHS.LOG_ADMIN, PATHS.LOG_HN]) {
+        try {
+            if (!fs.existsSync(f)) continue
+            const lines = fs.readFileSync(f, "utf8").split("\n")
+                .filter(l => l && !l.includes("0000000007") && !l.includes("0000000008"))
+            fs.writeFileSync(f, lines.length ? lines.join("\n") + "\n" : "")
+        } catch { }
+    }
+    for (const user of ["0000000007", "0000000008"]) {
+        for (const f of [path.join(PATHS.LOG_CHATS, user + ".txt"), path.join(PATHS.LLM_CTX_CHATS, user + ".txt")]) {
+            try { fs.removeSync(f) } catch { }
+        }
+    }
     check("cleanup done (map cleared, files restored)", state.handoffUntil.size === 0)
 
     console.log("\n═══════════════════════════════")

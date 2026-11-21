@@ -37,12 +37,19 @@ function runChild(extraEnv) {
 
 function snapshotFile(p) { try { return fs.readFileSync(p, "utf8") } catch { return null } }
 function restoreSnapshot(p, content) { if (content !== null) fs.writeFileSync(p, content) }
+function snapshotBinaryFile(p) { try { return fs.readFileSync(p) } catch { return null } }
+function restoreBinarySnapshot(p, content) {
+    try { if (content === null) fs.removeSync(p); else fs.writeFileSync(p, content) } catch { }
+}
 
 function main() {
     // ── parent-level snapshots (the real safety) ──
     const snapKnowledge   = snapshotFile(path.join(MEM, "knowledge.json"))
     const snapKnowledgeBk = snapshotFile(path.join(MEM, "knowledge.json.bak"))
     const snapCache       = snapshotFile(path.join(MEM, "embeddings_cache.json"))
+    const snapKnowDB      = snapshotBinaryFile(path.join(MEM, "knowledge.db"))
+    const snapKnowDBWal   = snapshotBinaryFile(path.join(MEM, "knowledge.db-wal"))
+    const snapKnowDBShm   = snapshotBinaryFile(path.join(MEM, "knowledge.db-shm"))
 
     // clean slate for observable side-effects
     for (const f of fs.readdirSync(BAK).filter(f => f.startsWith("knowledge_prestart_"))) fs.removeSync(path.join(BAK, f))
@@ -68,6 +75,18 @@ function main() {
         check("restart run leaves no CHILD_FAIL", !out3.includes("CHILD_FAIL"))
         check("cache reused on restart (model skipped)", /reused from embedding cache/.test(out3))
 
+        console.log("── same-process hand-edit + reconnect rebuild ──")
+        const reconnectOut = runChild({ RECONNECT_EDIT: "1" })
+        const reconnectLine = reconnectOut.match(/RECONNECT_RESULT=(.*)/)
+        let reconnectResult = null
+        try { reconnectResult = reconnectLine ? JSON.parse(reconnectLine[1]) : null } catch { }
+        check("reconnect removes a hand-deleted KB row",
+            reconnectResult && reconnectResult.deletedGone === true && reconnectResult.rowCount === 1)
+        check("reconnect applies the hand-edited answer to DB and live state",
+            reconnectResult && reconnectResult.editedUpdated === true && reconnectResult.stateMatches === true)
+        check("reconnect certifies only the rebuilt disk contents",
+            reconnectResult && reconnectResult.hashMatches === true)
+
         console.log("── corrupt knowledge.json → restore from backup ──")
         const out4 = runChild({ B3_CORRUPT: "1" })   // exits rc 3 on failure → execFileSync throws
         check("corrupt-file child reports success", !out4.includes("CHILD_FAIL"))
@@ -84,6 +103,9 @@ function main() {
         restoreSnapshot(path.join(MEM, "knowledge.json.bak"), snapKnowledgeBk)
         restoreSnapshot(path.join(MEM, "embeddings_cache.json"), snapCache)
         if (snapCache === null) { try { fs.removeSync(path.join(MEM, "embeddings_cache.json")) } catch { } }
+        restoreBinarySnapshot(path.join(MEM, "knowledge.db"), snapKnowDB)
+        restoreBinarySnapshot(path.join(MEM, "knowledge.db-wal"), snapKnowDBWal)
+        restoreBinarySnapshot(path.join(MEM, "knowledge.db-shm"), snapKnowDBShm)
         for (const f of fs.readdirSync(BAK).filter(f => f.startsWith("knowledge_prestart_"))) fs.removeSync(path.join(BAK, f))
         for (const f of fs.readdirSync(MEM).filter(f => f.includes("knowledge.json.corrupt_"))) fs.removeSync(path.join(MEM, f))
     }

@@ -69,7 +69,7 @@ async function main() {
     const embedCache = require("../src/embedCache")
     const handler = require("../src/handler")
     const reconnect = require("../src/reconnect")
-    const { RECONNECT_MAX_RETRIES } = require("../src/config")
+    const { RECONNECT_MAX_RETRIES, PROCESSED_ID_HARD_CAP, PROCESSED_ID_COMPACT_AT } = require("../src/config")
 
     // deterministic fake semantic layer: every text maps to a vector that is
     // 85% a shared "topic" direction + sqrt(1-0.85²) its own hash noise, i.e.
@@ -228,6 +228,45 @@ async function main() {
     tracking._resetProcessedForTests()
     tracking.loadProcessedIds()
     check("IDs older than 48h are dropped", state.processed.has("TESTID_OLD") === false && state.processed.has("TESTID_A") === true)
+
+    console.log("\n── processed-ID compaction cannot erase a concurrent arrival ──")
+    const originalWriteFile = fs.promises.writeFile
+    const originalRename = fs.promises.rename
+    const originalAppendFile = fs.promises.appendFile
+    let releaseRename = () => { }
+    try {
+        tracking._resetProcessedForTests()
+        const now = Date.now()
+        const initialLines = Array.from({ length: PROCESSED_ID_HARD_CAP }, (_, i) => `${now} TEST_RACE_BASE_${i}`).join("\n") + "\n"
+        fs.writeFileSync(PATHS.PROCESSED_IDS, initialLines)
+        tracking.loadProcessedIds()
+        fs.promises.appendFile = async () => { }
+        for (let i = PROCESSED_ID_HARD_CAP; i < PROCESSED_ID_COMPACT_AT; i++) tracking.markProcessed(`TEST_RACE_SEED_${i}`)
+        fs.promises.appendFile = originalAppendFile
+
+        let renameStartedResolve
+        const renameStarted = new Promise(resolve => { renameStartedResolve = resolve })
+        const renameGate = new Promise(resolve => { releaseRename = resolve })
+        fs.promises.rename = async (...args) => {
+            renameStartedResolve()
+            await renameGate
+            return originalRename(...args)
+        }
+        const compaction = tracking.compactProcessedIds()
+        await renameStarted
+        tracking.markProcessed("TEST_RACE_ARRIVAL")
+        releaseRename()
+        await compaction
+        await sleep(80)
+        check("an arrival during compaction remains in the live dedup set", state.processed.has("TEST_RACE_ARRIVAL"))
+        check("an arrival during compaction remains in the JSONL file",
+            fs.readFileSync(PATHS.PROCESSED_IDS, "utf8").includes("TEST_RACE_ARRIVAL"))
+    } finally {
+        releaseRename()
+        fs.promises.writeFile = originalWriteFile
+        fs.promises.rename = originalRename
+        fs.promises.appendFile = originalAppendFile
+    }
 
     /* ═══════════ chat_memory flush timer instead of per-message writes ═══════════ */
     console.log("\n── chat_memory.json dirty-flush ──")

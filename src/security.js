@@ -99,6 +99,11 @@ function normalizeURL(raw) {
     return s
 }
 
+function urlVerdictCacheKey(url) {
+    // href normalizes scheme/hostname case without merging case-sensitive paths or queries.
+    try { return new URL(url).href } catch { return url }
+}
+
 function urlDedupeKey(normalized) {
     try {
         const u = new URL(normalized)
@@ -224,9 +229,10 @@ async function checkURL(url, sourceLabel, senderJid, contactName, chatType, chat
     }
 
     const lurl = url.toLowerCase()
+    const cacheKey = urlVerdictCacheKey(url)
 
-    if (state.urlCache.has(lurl)) {
-        const c = state.urlCache.get(lurl)
+    if (state.urlCache.has(cacheKey)) {
+        const c = state.urlCache.get(cacheKey)
         if (Date.now() - c.time < 86400000) {
             appendLinkLedger(buildLinkEntry(url, senderJid, contactName, chatType, chatName, c.safe ? "safe" : "malicious"))
             // Cached-SAFE is silent; a cached
@@ -234,7 +240,7 @@ async function checkURL(url, sourceLabel, senderJid, contactName, chatType, chat
             if (!c.safe) notifyAdmin(`🚨 UNSAFE link (cached verdict)${sourceLabel ? `\nFrom: ${sourceLabel}` : ""}:\n${url}\nNo reply was sent to the contact.`)
             return c.safe
         }
-        state.urlCache.delete(lurl)
+        state.urlCache.delete(cacheKey)
     }
 
     const vtSlot = await vtAcquire()
@@ -263,7 +269,7 @@ async function checkURL(url, sourceLabel, senderJid, contactName, chatType, chat
             const stats = report.data.data.attributes.stats
             const safe = !(stats.malicious >= 1 || stats.suspicious > 0)
             if (state.urlCache.size >= URL_CACHE_MAX) state.urlCache.delete(state.urlCache.keys().next().value)
-            state.urlCache.set(lurl, { safe, time: Date.now() })
+            state.urlCache.set(cacheKey, { safe, time: Date.now() })
             appendLinkLedger(buildLinkEntry(url, senderJid, contactName, chatType, chatName, safe ? "safe" : "malicious"))
             if (!safe) {
                 // A fresh UNSAFE verdict is notified IMMEDIATELY — before,

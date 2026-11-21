@@ -84,8 +84,23 @@ async function buildKnowledgeDB() {
     // the table at boot whenever the fingerprint was stale, so a warm boot
     // lands here with a matching table and just refreshes the in-memory
     // cache — startup drops from seconds to milliseconds.
+    // Parse the SAME disk snapshot that is hashed. This also refreshes live
+    // state on a warm skip, so a later commit cannot overwrite hand-edits.
+    const fs = require("fs-extra")
+    const crypto = require("crypto")
     let fileHashNow = null, metaHash = null, metaCount = null, rowsNow = null
-    try { fileHashNow = sha256File(PATHS.KNOWLEDGE) } catch { }
+    try {
+        const rawKnowledge = fs.readFileSync(PATHS.KNOWLEDGE, "utf8")
+        fileHashNow = crypto.createHash("sha256").update(rawKnowledge).digest("hex")
+        const diskKnowledge = JSON.parse(rawKnowledge)
+        if (!diskKnowledge || !Array.isArray(diskKnowledge.entries)) throw new Error("knowledge.json must contain an entries array")
+        if (!state.knowledge) state.knowledge = { entries: [] }
+        state.knowledge.entries = diskKnowledge.entries
+    } catch (e) {
+        logError("knowledge.buildKnowledgeDB", "knowledge.json reload failed", e)
+        queueStartupNotice(`🚨 knowledge.json could not be reloaded: ${e.message}`)
+        throw e
+    }
     try {
         metaHash = knowledgeDB.prepare("SELECT value FROM meta WHERE key = 'build_hash'").get()
         metaCount = knowledgeDB.prepare("SELECT value FROM meta WHERE key = 'build_count'").get()
@@ -94,12 +109,13 @@ async function buildKnowledgeDB() {
     if (fileHashNow && metaHash && metaCount && metaHash.value === fileHashNow && Number(metaCount.value) === rowsNow) {
         console.log("⚡ knowledge.json unchanged since the last build (fingerprint + row count match) — skipping the rebuild.")
         refreshKnowledgeCache()
-        refreshKnowledgeStamp()
+        knowledgeStamp = fileHashNow
         return
     }
 
     console.log("🔄 Rebuilding knowledge.db from knowledge.json...")
 
+    const deleteStmt = knowledgeDB.prepare("DELETE FROM knowledge")
     const insertStmt = knowledgeDB.prepare(
         "INSERT OR IGNORE INTO knowledge(message, reply, vector, embedding) VALUES(?, ?, ?, ?)"
     )
@@ -107,10 +123,11 @@ async function buildKnowledgeDB() {
     let inserted = 0
     let skipped = 0
     let dupIgnored = 0
-    const preCount = knowledgeDB.prepare("SELECT COUNT(*) as c FROM knowledge").get().c
     const toEmbed = []
 
     const tx = knowledgeDB.transaction(() => {
+        // A rebuild is replacement, never a merge with rows the owner deleted.
+        deleteStmt.run()
         for (const e of state.knowledge.entries) {
             if (!e.message || !e.reply) continue
             const cleanedMsg = canonicalize(e.message.trim())
@@ -126,15 +143,8 @@ async function buildKnowledgeDB() {
                     toEmbed.push(normMsg)
                     inserted++
                 } else {
-                    // Two knowledge.json entries normalizing to the same
-                    // key — the duplicate was silently dropped before; now it is
-                    // counted and surfaced to the admin. Only meaningful on
-                    // a fresh rebuild — a mid-session rebuild legitimately merges
-                    // with existing rows, which must NOT look like duplicates.
-                    if (preCount === 0) {
-                        dupIgnored++
-                        logError("knowledge.buildKnowledgeDB", "duplicate normalized key in knowledge.json — only the first entry is kept", undefined, { quiet: true })
-                    }
+                    dupIgnored++
+                    logError("knowledge.buildKnowledgeDB", "duplicate normalized key in knowledge.json — only the first entry is kept", undefined, { quiet: true })
                 }
             } catch (e) { logError("knowledge.buildKnowledgeDB", "insert failed for one entry", e, { quiet: true }) }
         }
@@ -144,9 +154,8 @@ async function buildKnowledgeDB() {
     refreshKnowledgeCache()
     const total = knowledgeDB.prepare("SELECT COUNT(*) as c FROM knowledge").get().c
     console.log(`📚 DB built — ${inserted} entries inserted, ${skipped} skipped, ${dupIgnored} duplicate key(s) ignored | Total: ${total}`)
-    // A freshly-emptied table must hold EXACTLY
-    // what we tried to insert — a mismatch means silent row loss. Loud, never quiet.
-    if (preCount === 0 && total !== inserted) {
+    const verified = total === inserted
+    if (!verified) {
         const msg = `🚨 knowledge.db rebuild mismatch: inserted ${inserted} but the table holds ${total}. Check memory/knowledge.json for malformed entries.`
         console.error(msg)
         logError("knowledge.buildKnowledgeDB", "post-rebuild count mismatch", new Error(`inserted=${inserted} total=${total}`))
@@ -157,16 +166,32 @@ async function buildKnowledgeDB() {
         console.error(msg)
         queueStartupNotice(msg)
     }
-    refreshKnowledgeStamp()
 
-    // Remember what this build produced so the NEXT boot can skip.
-    // Unconditional — a mid-session rebuild (commit / hand-edit) must refresh
-    // the fingerprint too, or the next boot would needlessly rebuild again.
-    try {
-        const finalHash = sha256File(PATHS.KNOWLEDGE)
-        knowledgeDB.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES('build_hash', ?)").run(finalHash)
-        knowledgeDB.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES('build_count', ?)").run(String(total))
-    } catch (e) { logError("knowledge.buildKnowledgeDB", "build fingerprint write failed (next boot will simply rebuild)", e, { quiet: true }) }
+    // Certify only a verified rebuild of the same disk snapshot. If the owner
+    // edits the file mid-build, leave the stamp dirty so the next boot/reconnect retries.
+    let finalHash = null
+    try { finalHash = sha256File(PATHS.KNOWLEDGE) } catch (e) {
+        logError("knowledge.buildKnowledgeDB", "final knowledge.json hash failed", e, { quiet: true })
+    }
+    const fileStable = finalHash !== null && finalHash === fileHashNow
+    if (verified && fileStable) {
+        try {
+            knowledgeDB.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES('build_hash', ?)").run(finalHash)
+            knowledgeDB.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES('build_count', ?)").run(String(total))
+            knowledgeStamp = finalHash
+        } catch (e) {
+            knowledgeStamp = null
+            logError("knowledge.buildKnowledgeDB", "build fingerprint write failed (next boot will simply rebuild)", e, { quiet: true })
+        }
+    } else {
+        knowledgeStamp = null
+        if (!fileStable) {
+            const msg = "⚠️ knowledge.json changed during the rebuild — fingerprint not written; the next boot/reconnect will retry."
+            console.warn(msg)
+            logError("knowledge.buildKnowledgeDB", "knowledge.json changed during rebuild", new Error("source file hash changed"), { quiet: true })
+            queueStartupNotice(msg)
+        }
+    }
 
     if (toEmbed.length > 0) computeEmbeddingsFor(toEmbed)
 }
@@ -426,25 +451,25 @@ function isGarbage(text) {
     return false
 }
 
+const TRIVIAL_FILLERS = new Set([
+    "ok", "okay", "ok ok", "okay okay", "fine", "sure", "yes", "no", "yeah", "yup", "nope",
+    "lol", "haha", "lmao", "rofl", "ha", "loll", "lololol", "hmm", "hmmm", "uh", "ugh",
+    "err", "meh", "idk", "right", "cool", "nice", "good", "bad", "great", "awesome",
+    "k", "kk", "kkk", "123", "yay", "yesss", "nooo",
+    "thanks", "thank you", "thx", "ty", "no thanks",
+    "bye", "bye bye", "see you", "later", "cya", "gtg", "gotta go",
+    "help", "need help", "help me", "hello", "hi", "hey", "yo", "sup",
+    "hm", "huh", "eww", "bruh", "smh", "tbh", "ngl",
+    "hola", "namaste", "salam",
+    ".", "..", "...", "????", "!!!!", "!!!!!", "?????"
+])
+
 function isFiller(text) {
     if (!text) return true
     const t = text.trim().toLowerCase()
     const cleanT = canonicalize(t)
 
-    const trivial = new Set([
-        "ok", "okay", "ok ok", "okay okay", "fine", "sure", "yes", "no", "yeah", "yup", "nope",
-        "lol", "haha", "lmao", "rofl", "ha", "loll", "lololol", "hmm", "hmmm", "uh", "ugh",
-        "err", "meh", "idk", "right", "cool", "nice", "good", "bad", "great", "awesome",
-        "k", "kk", "kkk", "123", "yay", "yesss", "nooo",
-        "thanks", "thank you", "thx", "ty", "no thanks",
-        "bye", "bye bye", "see you", "later", "cya", "gtg", "gotta go",
-        "help", "need help", "help me", "hello", "hi", "hey", "yo", "sup",
-        "hm", "huh", "eww", "bruh", "smh", "tbh", "ngl",
-        "hola", "namaste", "salam",
-        ".", "..", "...", "????", "!!!!", "!!!!!", "?????"
-    ])
-
-    if (trivial.has(cleanT) || trivial.has(t)) return true
+    if (TRIVIAL_FILLERS.has(cleanT) || TRIVIAL_FILLERS.has(t)) return true
     if (cleanT.length < 5) return true
     const words = cleanT.split(/\s+/).filter(w => w.length > 1)
     if (words.length === 1 && words[0].length < 5) return true
@@ -665,9 +690,11 @@ async function learn(q, a, fromLLM = false, hybridScore = 1.0, sourceContext = "
     return commitKnowledge(q, a)
 }
 
+const bumpKnowledgeHitStmt = knowledgeDB.prepare("UPDATE knowledge SET uses = uses + 1 WHERE id = ?")
+
 function bumpKnowledgeHit(id) {
     state.knowledgeHitCount++
-    knowledgeDB.prepare("UPDATE knowledge SET uses = uses + 1 WHERE id = ?").run(id)
+    bumpKnowledgeHitStmt.run(id)
     const cached = state.knowledgeCacheById.get(id)
     if (cached) cached.uses = (cached.uses || 0) + 1
 }

@@ -85,8 +85,7 @@ function hasCurrencySymbol(text) { return CURRENCY_SYMBOLS.test(text) }
 function canonicalize(text) {
     if (!text) return ""
     let t = text.toString().toLowerCase()
-    const emojis = extractEmojis(t)
-    for (const e of emojis) t = t.replace(e, " ")
+    // This allowed-character pass already removes emojis — no per-emoji replace loop needed.
     t = t.replace(/[^a-z0-9\s\u0980-\u09FF\u0900-\u097F]/g, " ")
     t = t.replace(/\s+/g, " ").trim()
     return t
@@ -193,45 +192,45 @@ function isNearDuplicate(text1, text2, threshold = 0.90) {
 }
 
 /* ── intent detection (English-only regex) ── */
+const INTENT_RULES = [
+    {
+        test: s => /\b(hello|hi+|hey+|yo+|hii+|sup|greetings|good morning|good night|good afternoon|good evening|howdy|what's up|wassup|how are you|hu+|hy|hlo|hlw|kemon acho|kemon achen|assalamu)\b|নমস্কার|সুপ্রভাত|হ্যালো|আসসালামু|কেমন আছ|নমস্তে|नमस्ते|नमस्कार|सुप्रभात|हैलो|हलो|हाय|कैसे हो|कैसे हैं|कैसी हो/.test(s),
+        intent: "greeting"
+    },
+    {
+        test: s => /\b(sorry|apologize|apologies|my bad|forgive me|pardon|excuse me|i was wrong|i apologize|my mistake|my fault|maaf koro|maaf karna|maaf chai|kshama)\b|দুঃখিত|মাফ চাই|ক্ষমা|माफ़|माफ|क्षमा|सॉरी|सोरी/.test(s),
+        intent: "apology"
+    },
+    {
+        test: s => /\b(angry|furious|frustrated|mad|upset|hate you|pissed|annoyed|irritated|livid|enraged|fed up|sick of|can't stand|pissed off)\b|नाराज़|गुस्सा|बकवास|बेकार|घटिया|धोखा|झूठ|फाल्तू/.test(s),
+        intent: "angry"
+    },
+    {
+        test: s => /\b(sad|depressed|crying|hurt|heartbroken|pain|down|lonely|hopeless|worthless|miserable|devastated|broken|feel like dying|can't take it|feeling low|weeping)\b|दुख|दुखी|रो रह|तन्हा|अकेल|डिप्रेशन|दर्द/.test(s),
+        intent: "emotional"
+    },
+    {
+        test: s => /\b(thanks|thank you|thank|ty|thx|thnks|thnku|thanku|thankss|tysm|tyvm|thankful|grateful|appreciated|dhonnobad|dhanyobad|dhanyabad|dhanyawad|shukriya|sukriya)\b|ধন্যবাদ|धन्यवाद|शुक्रिया|थैंक्स/.test(s),
+        intent: "thanks"
+    },
+    {
+        test: s => /\b(bye|goodbye|ciao|see you|later|good night|gotta go|gtg|ttyl|take care|byebye|bbye|see ya|laters|alvida|biday)\b|বিদায়|अलविदा|टटा|बाय/.test(s),
+        intent: "bye"
+    },
+    {
+        test: s => /\b(help|assist|problem|issue|fix|how do i|how to|support|trouble|stuck|error|not working|can you help|need help|help me|solution|solve|guidance)\b/.test(s),
+        intent: "help"
+    },
+    {
+        test: s => /(\?|what\b|when\b|where\b|why\b|who\b|how\b|which\b|tell me|explain|describe|could you|can you tell|do you know|any idea|wondering|curious|doubt|query|clarify)/.test(s),
+        intent: "question"
+    }
+]
+
 function detectIntent(msg) {
     const raw = applyTypoMap(msg.toLowerCase())
 
-    const rules = [
-        {
-            test: s => /\b(hello|hi+|hey+|yo+|hii+|sup|greetings|good morning|good night|good afternoon|good evening|howdy|what's up|wassup|how are you|hu+|hy|hlo|hlw|kemon acho|kemon achen|assalamu)\b|নমস্কার|সুপ্রভাত|হ্যালো|আসসালামু|কেমন আছ|নমস্তে|नमस्ते|नमस्कार|सुप्रभात|हैलो|हलो|हाय|कैसे हो|कैसे हैं|कैसी हो/.test(s),
-            intent: "greeting"
-        },
-        {
-            test: s => /\b(sorry|apologize|apologies|my bad|forgive me|pardon|excuse me|i was wrong|i apologize|my mistake|my fault|maaf koro|maaf karna|maaf chai|kshama)\b|দুঃখিত|মাফ চাই|ক্ষমা|माफ़|माफ|क्षमा|सॉरी|सोरी/.test(s),
-            intent: "apology"
-        },
-        {
-            test: s => /\b(angry|furious|frustrated|mad|upset|hate you|pissed|annoyed|irritated|livid|enraged|fed up|sick of|can't stand|pissed off)\b|नाराज़|गुस्सा|बकवास|बेकार|घटिया|धोखा|झूठ|फाल्तू/.test(s),
-            intent: "angry"
-        },
-        {
-            test: s => /\b(sad|depressed|crying|hurt|heartbroken|pain|down|lonely|hopeless|worthless|miserable|devastated|broken|feel like dying|can't take it|feeling low|weeping)\b|दुख|दुखी|रो रह|तन्हा|अकेल|डिप्रेशन|दर्द/.test(s),
-            intent: "emotional"
-        },
-        {
-            test: s => /\b(thanks|thank you|thank|ty|thx|thnks|thnku|thanku|thankss|tysm|tyvm|thankful|grateful|appreciated|dhonnobad|dhanyobad|dhanyabad|dhanyawad|shukriya|sukriya)\b|ধন্যবাদ|धन्यवाद|शुक्रिया|थैंक्स/.test(s),
-            intent: "thanks"
-        },
-        {
-            test: s => /\b(bye|goodbye|ciao|see you|later|good night|gotta go|gtg|ttyl|take care|byebye|bbye|see ya|laters|alvida|biday)\b|বিদায়|अलविदा|टटा|बाय/.test(s),
-            intent: "bye"
-        },
-        {
-            test: s => /\b(help|assist|problem|issue|fix|how do i|how to|support|trouble|stuck|error|not working|can you help|need help|help me|solution|solve|guidance)\b/.test(s),
-            intent: "help"
-        },
-        {
-            test: s => /(\?|what\b|when\b|where\b|why\b|who\b|how\b|which\b|tell me|explain|describe|could you|can you tell|do you know|any idea|wondering|curious|doubt|query|clarify)/.test(s),
-            intent: "question"
-        }
-    ]
-
-    for (const rule of rules) {
+    for (const rule of INTENT_RULES) {
         if (rule.test(raw)) {
             const weight = INTENT_WEIGHTS[rule.intent]
             const conf = weight >= 0.88 ? "high" : "medium"

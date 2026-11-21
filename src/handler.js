@@ -39,6 +39,11 @@ const { handleCommand } = require("./admin")
    notice. A suppressed/dropped reply means that customer got silence — it is
    always visible to the owner, never silent. */
 sendGuard.initDropLogger(({ chatId, reason }) => {
+    if (reason === "authorization_revoked") {
+        logAdminActivity(`[REPLY CANCELLED] ${getNumber(chatId)} — pause/handoff/block/DND changed before send`)
+        notifyAdminBatched("Reply guard", `🛑 reply cancelled for ${getNumber(chatId)} — pause/handoff/block/DND changed before send`)
+        return
+    }
     if (reason === "identical_suppressed") bumpDigestSendGuard("identicalSuppressed")
     else bumpDigestSendGuard("rateDropped")
     notifyAdminBatched("Reply guard",
@@ -298,6 +303,17 @@ async function onMessage(message) {
                 const cleanOutgoing = rawBody.startsWith("QUICK REPLY : ") ? rawBody.slice(14).trim() : rawBody
                 saveConversation(chatPartner, cleanOutgoing, "out")
                 appendLLMContext(chatPartner, "YOU", cleanOutgoing, ownGroupName)
+
+                // Handoff is a safety control, not a learning feature. Even a
+                // short "ok" or a reply while learning is off means the owner
+                // took over. Groups stay exempt.
+                if (!chatPartner.endsWith("@g.us")) {
+                    if (activateHandoff(chatPartner)) {
+                        bumpDigestHandoff()
+                        notifyAdmin(`🤝 Handoff active for ${getNumber(chatPartner)} — the bot stays quiet there for ${Math.round(HANDOFF_WINDOW_MS / 60000)} min. Replying again extends it.`)
+                    }
+                }
+
                 if (state.settings.learning && rawBody.trim().length >= 3 && !chatPartner.endsWith("@g.us") &&
                     !state.settings.blacklist.includes(chatPartner) && !state.settings.learnBlock.includes(chatPartner)) {
                     if (message.hasQuotedMsg) {
@@ -315,16 +331,6 @@ async function onMessage(message) {
                         const pending = getLastMessage(chatPartner)
                         if (pending && isQuestionLike(pending)) {
                             await learn(pending, rawBody, false, 1.0, "owner phone reply", "auto")
-                        }
-                    }
-                    // A manual DM reply hands the thread over: the bot stands
-                    // down for this chat for a while (each new reply pushes the
-                    // window out). Groups are exempt — one member's chat must
-                    // not go quiet for the whole group.
-                    if (!chatPartner.endsWith("@g.us")) {
-                        if (activateHandoff(chatPartner)) {
-                            bumpDigestHandoff()
-                            notifyAdmin(`🤝 Handoff active for ${getNumber(chatPartner)} — the bot stays quiet there for ${Math.round(HANDOFF_WINDOW_MS / 60000)} min. Replying again extends it.`)
                         }
                     }
                 }
@@ -600,6 +606,11 @@ async function onMessage(message) {
                 saveConversation(user, cleanReplyForDb, "out")
                 appendLLMContext(user, "BOT", cleanReplyForDb, isGroup ? groupName : undefined)
                 if (opts && opts.onSent) opts.onSent()
+            }, () => {
+                const groupBlocked = isGroup && state.settings.groupBlacklist.includes(user)
+                const dmBlocked = !isGroup && state.settings.blacklist.includes(user)
+                const dmStopped = !isGroup && (isHandoffActive(user) || isUserPaused(user))
+                return !groupBlocked && !dmBlocked && !dmStopped && !isGloballyPaused() && !isInDND()
             })
             return null
         }

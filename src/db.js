@@ -110,6 +110,15 @@ for (const dbw of [convoDB, knowledgeDB, reviewDB]) {
     try { dbw.pragma("journal_mode = WAL"); dbw.pragma("synchronous = NORMAL") } catch { }
 }
 
+// Frequent writes are prepared once per database handle, not once per message.
+const insertConversationStmt = convoDB.prepare(
+    "INSERT INTO conversations(user, message, direction, timestamp) VALUES(?, ?, ?, ?)"
+)
+const reviewFindByQuestionStmt = reviewDB.prepare("SELECT id FROM pending WHERE question = ?")
+const reviewInsertStmt = reviewDB.prepare(
+    "INSERT INTO pending(question, answer, context, timestamp) VALUES(?, ?, ?, ?)"
+)
+
 function reviewQueueCount() {
     try { return reviewDB.prepare("SELECT COUNT(*) as c FROM pending").get().c } catch { return 0 }
 }
@@ -120,10 +129,9 @@ function reviewAdd(q, a, ctx) {
     try {
         // Duplicate suppression — the same question pending
         // twice never creates a second row (was: 10 asks = 10 rows + 10 notifications).
-        const dup = reviewDB.prepare("SELECT id FROM pending WHERE question = ?").get(q)
+        const dup = reviewFindByQuestionStmt.get(q)
         if (dup) return { id: dup.id, deduped: true }
-        const info = reviewDB.prepare("INSERT INTO pending(question, answer, context, timestamp) VALUES(?, ?, ?, ?)")
-            .run(q, a, ctx || "", Date.now())
+        const info = reviewInsertStmt.run(q, a, ctx || "", Date.now())
         return { id: info.lastInsertRowid, deduped: false }
     } catch { return null }
 }
@@ -133,9 +141,7 @@ function reviewDelete(id) {
 
 function saveConversation(user, msg, direction) {
     try {
-        convoDB.prepare(
-            "INSERT INTO conversations(user, message, direction, timestamp) VALUES(?, ?, ?, ?)"
-        ).run(user, msg, direction || "in", Date.now())
+        insertConversationStmt.run(user, msg, direction || "in", Date.now())
     } catch (e) { logError("db.saveConversation", "conversation insert failed", e) }
 }
 

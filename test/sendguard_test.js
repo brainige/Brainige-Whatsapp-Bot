@@ -124,6 +124,22 @@ async function main() {
     await sleep(60)
     check("queue drains once the window slides", sent2 === 4 && sendGuard.pendingCount() === 0)
 
+    /* ═══════════ #5: authorization is rechecked at the final send boundary ═══════════ */
+    console.log("\n── #5: final authorization recheck ──")
+    sendGuard._resetForTests()
+    sendGuard.init({ gapMinMs: 1, gapMaxMs: 2, hourlyCap: 1, capWindowMs: 200, queueMaxAgeMs: 60000, identicalHourCap: 100 })
+    dropEvents.length = 0
+    let allowedToSend = true
+    let revokedRuns = 0
+    sendGuard.guardCustomerReply(TEST_USER, "fill cap before revocation TESTH", async () => { })
+    await sleep(30)
+    sendGuard.guardCustomerReply(TEST_USER, "revoke this send TESTH", async () => { revokedRuns++ }, () => allowedToSend)
+    allowedToSend = false
+    await sleep(220)
+    await sendGuard.pump()
+    check("a reply revoked while queued never runs", revokedRuns === 0)
+    check("an authorization-revoked drop is reported", dropEvents.some(e => e.reason === "authorization_revoked"))
+
     /* ═══════════ #5: stale-drop — queued too long → dropped, never silent ═══════════ */
     console.log("\n── #5: stale-drop (owner choice: drop after the queue age limit) ──")
     sendGuard._resetForTests()
@@ -225,6 +241,24 @@ async function main() {
     state.urlCache.set("https://testh-unknown2.example.org/y", { safe: false, time: Date.now() })
     const unsafeCached = await security.checkURL("https://testh-unknown2.example.org/y", "testh", TEST_USER, null, "dm", "")
     check("cached UNSAFE: blocked + IMMEDIATE notification", unsafeCached === false && notices.length === 1 && notices[0].includes("UNSAFE"))
+
+    const caseUpperURL = "https://testh-case.example.org/Good?x=A"
+    const caseLowerURL = "https://testh-case.example.org/good?x=a"
+    state.urlCache.set(caseLowerURL, { safe: true, time: Date.now() })
+    let casePostCount = 0
+    axios.post = async () => { casePostCount++; return { data: { data: { id: "testh-case" } } } }
+    axios.get = async () => ({ data: { data: { attributes: { stats: { malicious: 1, suspicious: 0 } } } } })
+    const caseDistinctVerdict = await security.checkURL(caseUpperURL, "testh", TEST_USER, null, "dm", "")
+    check("a cached verdict for /good is never reused for the distinct /Good resource",
+        casePostCount === 1 && caseDistinctVerdict === false)
+
+    const hostUpperURL = "https://TESTH-HOST.example.org/Same"
+    const hostLowerURL = "https://testh-host.example.org/Same"
+    state.urlCache.set(hostLowerURL, { safe: false, time: Date.now() })
+    casePostCount = 0
+    const hostCaseVerdict = await security.checkURL(hostUpperURL, "testh", TEST_USER, null, "dm", "")
+    check("hostname case still reuses the cached verdict without a new scan",
+        casePostCount === 0 && hostCaseVerdict === false)
     axios.post = origPost
     axios.get = origGet
 
@@ -263,6 +297,30 @@ async function main() {
     await sleep(200)
     check("reply sent through the guard (with the owner-kept prefix)", replies.length === 1 && replies[0].startsWith("QUICK REPLY : "))
     check("digest counter bumped only when the reply really went out", (state.settings.digestState.totals.quickReplies || 0) === quickBefore + 1)
+
+    console.log("\n── #5 e2e: owner handoff revokes a queued handler reply ──")
+    sendGuard._resetForTests()
+    sendGuard.init({ gapMinMs: 1, gapMaxMs: 2, hourlyCap: 1, capWindowMs: 200, queueMaxAgeMs: 60000, identicalHourCap: 100 })
+    dropEvents.length = 0
+    replies.length = 0
+    state.convoMemory.delete(TEST_USER)
+    state.handoffUntil.delete(TEST_USER)
+    sendGuard.guardCustomerReply(TEST_USER, "fill cap before handoff TESTH", async () => { })
+    await sleep(30)
+    await handler.onMessage({
+        id: { _serialized: "TESTH_GREETING_REVOKE" }, body: "hello there friend", fromMe: false, from: TEST_USER,
+        hasMedia: false, type: "chat", hasQuotedMsg: false,
+        reply: async (t) => { replies.push(t); return { id: { _serialized: "X" } } },
+        getChat: async () => ({ name: null }), getQuotedMessage: async () => null
+    })
+    const queuedBeforeHandoff = sendGuard.pendingCount()
+    require("../src/handoff").activateHandoff(TEST_USER)
+    await sleep(220)
+    await sendGuard.pump()
+    await sleep(40)
+    check("a queued handler reply is dropped after owner handoff",
+        queuedBeforeHandoff === 1 && replies.length === 0 && dropEvents.some(e => e.reason === "authorization_revoked"))
+    state.handoffUntil.delete(TEST_USER)
 
     sendGuard._resetForTests()
     sendGuard.init({ gapMinMs: 1, gapMaxMs: 2, hourlyCap: 1, capWindowMs: 60000, queueMaxAgeMs: 60000, identicalHourCap: 100 })

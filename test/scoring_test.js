@@ -238,6 +238,11 @@ async function main() {
     console.log("\n── the two cleaners stay separate (difference asserted) ──")
     check("normalize KEEPS punctuation (storage cleaner)", text.normalize("Hi! TESTF?") === "hi! testf?")
     check("canonicalize STRIPS punctuation (comparison cleaner)", text.canonicalize("Hi! TESTF?") === "hi testf")
+    check("canonicalize removes repeated emojis without changing words",
+        text.canonicalize("  Price 😀😢😀 500 😀 ") === "price 500")
+    check("canonicalize turns emoji-only text into an empty string", text.canonicalize("😀😢❤️🤦‍♂️") === "")
+    check("canonicalize preserves Bengali and Devanagari while removing emojis",
+        text.canonicalize("কত 😀 क्या") === "কত क्या")
 
     /* ═══════════ cleanup: leave the project pristine ═══════════ */
     console.log("\n── cleanup ──")

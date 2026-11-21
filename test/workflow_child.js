@@ -49,6 +49,29 @@ async function main() {
 
     await knowledge.buildKnowledgeDB()
 
+    if (process.env.RECONNECT_EDIT === "1") {
+        const { knowledgeDB } = require("../src/db")
+        const { sha256File } = require("../src/util")
+        const removeQ = "reconnect delete me TESTW"
+        const editQ = "reconnect edit me TESTW"
+        await knowledge.commitKnowledge(removeQ, "delete this answer TESTW")
+        await knowledge.commitKnowledge(editQ, "old answer TESTW")
+        // A real hand-edit changes only the disk file. state.knowledge and the
+        // live DB intentionally keep the old rows, exactly like a reconnect.
+        fs.writeFileSync(cfg.PATHS.KNOWLEDGE, JSON.stringify({ entries: [{ message: editQ, reply: "new answer TESTW" }] }, null, 2))
+        await knowledge.buildKnowledgeDB()
+        const rows = knowledgeDB.prepare("SELECT message, reply FROM knowledge WHERE message LIKE 'reconnect %'").all()
+        const meta = knowledgeDB.prepare("SELECT value FROM meta WHERE key = 'build_hash'").get()
+        console.log("RECONNECT_RESULT=" + JSON.stringify({
+            deletedGone: !rows.some(r => r.message === removeQ.toLowerCase()),
+            editedUpdated: rows.some(r => r.message === editQ.toLowerCase() && r.reply === "new answer TESTW"),
+            rowCount: rows.length,
+            stateMatches: state.knowledge.entries.length === 1 && state.knowledge.entries[0].reply === "new answer TESTW",
+            hashMatches: !!meta && meta.value === sha256File(cfg.PATHS.KNOWLEDGE)
+        }))
+        process.exit(0)
+    }
+
     // Make the stub semantic layer "ready" — also resolves the pending
     // embedReadyPromise waiter started inside buildKnowledgeDB.
     state.embedPipeline = await pipeline()

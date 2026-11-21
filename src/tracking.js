@@ -17,14 +17,19 @@ const { logError } = require("./logging")
 
 let processedOrder = []   // [{id, ts}] in insertion order (mirrors the jsonl file)
 let compactPending = false
+let appendChain = Promise.resolve()
+let compactPromise = null
 
 function markProcessed(id) {
     if (!id) return
     if (!state.processed.has(id)) {
+        const ts = Date.now()
         state.processed.add(id)
-        processedOrder.push({ id, ts: Date.now() })
-        // Crash-safe — the ID reaches the disk the moment it's processed.
-        fs.promises.appendFile(PATHS.PROCESSED_IDS, `${Date.now()} ${id}\n`)
+        processedOrder.push({ id, ts })
+        // Serialize appends with compaction: an arrival during compaction is
+        // written AFTER the replacement file, never underneath the old snapshot.
+        appendChain = appendChain
+            .then(() => fs.promises.appendFile(PATHS.PROCESSED_IDS, `${ts} ${id}\n`))
             .catch(e => logError("tracking.markProcessed", "processed-id append failed", e))
         if (processedOrder.length >= PROCESSED_ID_COMPACT_AT) compactPending = true
     }
@@ -64,21 +69,41 @@ function loadProcessedIds() {
    limit, keeps file and memory in sync. No-op unless a compaction is due,
    so the 30s timer costs nothing on a quiet bot. On failure the pending
    flag stays set and the next timer tick retries. */
-async function compactProcessedIds() {
-    if (!compactPending) return
-    try {
-        const cutoff = Date.now() - PROCESSED_ID_MAX_AGE_MS
-        const keep = processedOrder.filter(e => e.ts >= cutoff).slice(-PROCESSED_ID_HARD_CAP)
-        const tmp = PATHS.PROCESSED_IDS + ".tmp"
-        fs.ensureDirSync(path.dirname(PATHS.PROCESSED_IDS))
-        await fs.promises.writeFile(tmp, keep.map(e => `${e.ts} ${e.id}`).join("\n") + (keep.length ? "\n" : ""))
-        await fs.promises.rename(tmp, PATHS.PROCESSED_IDS)
-        processedOrder = keep
-        state.processed = new Set(keep.map(e => e.id))
-        compactPending = false
-    } catch (e) {
-        logError("tracking.compactProcessedIds", "processed-ID compaction failed (will retry next tick)", e)
-    }
+function compactProcessedIds() {
+    if (compactPromise) return compactPromise
+    if (!compactPending) return Promise.resolve()
+
+    const run = appendChain.then(async () => {
+        try {
+            const snapshotLength = processedOrder.length
+            const cutoff = Date.now() - PROCESSED_ID_MAX_AGE_MS
+            const keep = processedOrder.filter(e => e.ts >= cutoff).slice(-PROCESSED_ID_HARD_CAP)
+            const tmp = PATHS.PROCESSED_IDS + ".tmp"
+            fs.ensureDirSync(path.dirname(PATHS.PROCESSED_IDS))
+            await fs.promises.writeFile(tmp, keep.map(e => `${e.ts} ${e.id}`).join("\n") + (keep.length ? "\n" : ""))
+            await fs.promises.rename(tmp, PATHS.PROCESSED_IDS)
+
+            // markProcessed() updates memory synchronously but queues its disk
+            // append behind this compaction. Merge those arrivals instead of
+            // replacing live state with the stale pre-await snapshot.
+            const additions = processedOrder.slice(snapshotLength)
+            const merged = new Map()
+            for (const entry of [...keep, ...additions]) {
+                if (entry.ts < cutoff) continue
+                merged.delete(entry.id)
+                merged.set(entry.id, entry)
+            }
+            processedOrder = [...merged.values()].slice(-PROCESSED_ID_HARD_CAP)
+            state.processed = new Set(processedOrder.map(e => e.id))
+            compactPending = processedOrder.length >= PROCESSED_ID_COMPACT_AT
+        } catch (e) {
+            logError("tracking.compactProcessedIds", "processed-ID compaction failed (will retry next tick)", e)
+        }
+    })
+    compactPromise = run
+    appendChain = run
+    run.finally(() => { if (compactPromise === run) compactPromise = null })
+    return run
 }
 
 /* Shutdown / crash-hook path: always writes the current list synchronously. */

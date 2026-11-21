@@ -74,7 +74,7 @@ function logHumanNeeded(jid, rawMsg, reason) {
     const num = getNumber(jid)
     const line = `${ts}  |  FROM: ${num}  |  REASON: ${flattenLog(reason)}  |  MSG: ${flattenLog(rawMsg)}`
     try { fs.appendFileSync(PATHS.LOG_HN, line + "\n") } catch (e) { logError("logging.logHumanNeeded", "human-needed log append failed", e) }
-    console.log(`⚠️  HUMAN NEEDED [${num}]: ${rawMsg.substring(0, 80)}`)
+    console.log(`⚠️  HUMAN NEEDED [${num}]: ${flattenLog(rawMsg).substring(0, 80)}`)
 }
 
 /* ── logMiss — every question the bot could NOT answer ─────────────────

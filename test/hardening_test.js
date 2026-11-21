@@ -94,7 +94,7 @@ async function main() {
     const knowledge = require("../src/knowledge")
     knowledge.init({ notifyAdmin: () => { } })
     const { knowledgeDB, reviewDB, convoDB } = require("../src/db")
-    const { writeToLog, getLogFilePath } = require("../src/logging")
+    const { writeToLog, getLogFilePath, logHumanNeeded } = require("../src/logging")
     const handler = require("../src/handler")
 
     // deterministic fake semantic layer (same as the other suites)
@@ -398,7 +398,22 @@ async function main() {
     console.log("\n── S5/S6: dot-only group names + newline log forgery ──")
     check("group name '..' → unnamed_group (no parent-directory escape)",
         sanitizeFolderName("..") === "unnamed_group" && sanitizeFolderName("...") === "unnamed_group")
+    check("trailing whitespace cannot revive a dot-only group name",
+        sanitizeFolderName(".. ") === "unnamed_group" && sanitizeFolderName(" ...  ") === "unnamed_group")
+    const groupMediaRoot = path.resolve(PATHS.MEDIA_GROUPS)
+    check("sanitized dot-only names stay inside the group media root", [".. ", " ...  "].every(name => {
+        const candidate = path.resolve(groupMediaRoot, sanitizeFolderName(name))
+        return candidate.startsWith(groupMediaRoot + path.sep)
+    }))
     check("a real group name is untouched", sanitizeFolderName("My Shop Group") === "My Shop Group")
+    {
+        const printed = []
+        const originalConsoleLog = console.log
+        console.log = (...args) => printed.push(args.join(" "))
+        try { logHumanNeeded(TEST_USER, "first line\n🚨 forged console record", "testg") } finally { console.log = originalConsoleLog }
+        check("the human-needed console line cannot be split by a caption",
+            printed.length === 1 && !printed[0].includes(String.fromCharCode(10)) && printed[0].includes("⏎"))
+    }
     {
         const f = getLogFilePath(TEST_USER, null)
         const before = (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "").split("\n").filter(Boolean).length
