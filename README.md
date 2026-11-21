@@ -142,7 +142,7 @@ Send from the admin number, in any chat:
 
 ## The dashboard
 
-A local web dashboard is being built in phases. What exists today is the server, and it's deliberately boring:
+A local web dashboard is being built in phases. The loopback-only server and the first Phase-1 design demo exist today:
 
 - It lives inside the bot process and binds to `127.0.0.1` only, so nothing on your network can reach it
 - Every route needs an `Authorization: Bearer <token>` header. A missing header, a wrong scheme or a wrong token all get the same bare `401` with no hints
@@ -150,7 +150,7 @@ A local web dashboard is being built in phases. What exists today is the server,
 - I keep the dashboard switched off unless I'm actively debugging something
 - Shutdown closes the listener, waits a short grace window for in-flight requests, then force-closes stragglers, so an abandoned browser tab can never hang a Ctrl+C
 
-The only routes today are `GET /health` and `GET /`. `/health` answers with uptime, and `/` returns a clean `503` until the frontend is built with `npm run build:dashboard`. The chat, VirusTotal and log screens come next.
+The server routes today are `GET /health` and `GET /`. `/health` answers with uptime, and `/` serves the built frontend after `npm run build:dashboard` (or a clean `503` when no build exists). The current demo uses synthetic data only: Status and its interactive message-route field, Console, and Messages are built; Admin and Review remain clearly marked placeholders in this slice. Console and Messages simulate log tails and incoming messages locally. No live bot data is connected.
 
 Try it once the bot is running:
 
@@ -158,7 +158,7 @@ Try it once the bot is running:
 curl -H "Authorization: Bearer $DASHBOARD_TOKEN" http://127.0.0.1:7800/health
 ```
 
-The screens themselves arrive in 6.6.0.
+The remaining working screens arrive in 6.6.0.
 
 ## Testing
 
@@ -166,7 +166,7 @@ The screens themselves arrive in 6.6.0.
 npm test
 ```
 
-558 checks across fifteen suites, plus a boot suite that starts the real `bot.js` with stubbed WhatsApp and proves a clean Ctrl+C shutdown. Everything runs offline: WhatsApp, the network and the embedding model are stubbed, the suite finishes in seconds, and it never touches your real session or data. It snapshots and restores every project file it touches, so a test run leaves the project exactly as it found it.
+617 checks across sixteen suites, plus a boot suite that starts the real `bot.js` with stubbed WhatsApp and proves a clean Ctrl+C shutdown. Everything runs offline: WhatsApp, the network and the embedding model are stubbed, the suite finishes in seconds, and it never touches your real session or data. It snapshots and restores every project file it touches, so a test run leaves the project exactly as it found it.
 
 ## Project layout
 
@@ -216,7 +216,7 @@ This is a small personal project and I'm its only maintainer, so please read the
 
 **The dashboard prints DISABLED.** That's the fail-closed path working. Set `DASHBOARD_TOKEN` and `DASHBOARD_PORT` in `.env`, or leave them empty and run without the dashboard.
 
-**`/` returns `503 frontend_not_built`.** The frontend isn't built yet. Run `npm run build:dashboard` when the UI lands.
+**`/` returns `503 frontend_not_built`.** The build output is missing. Run `npm run build:dashboard`, then restart the bot so the dashboard can serve `src/dashboard/dist/index.html`.
 
 **A customer gets no reply at all.** That's usually the human-needed path doing its job. Check `logs/human_needed.txt` and `logs/errors.txt` before assuming a bug.
 

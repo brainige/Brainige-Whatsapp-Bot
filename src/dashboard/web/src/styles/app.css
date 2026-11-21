@@ -1,0 +1,48 @@
+/* Hallmark · theme: custom · idea: "Message routes become a living service map" · vibe: "composed technical warmth" · paper: cool graphite · display: Host Grotesk Variable · accent: solar amber · posture: restrained · axes: dark/grotesk/warm · hero: left status beside live route field · nav: compact product bar · footer: none (app shell) · signature: pointer-bent message routes */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: R, one ambient system only; secondary decoration was cut */
+/* Hallmark · dismissed 25 · the Status lede is one sentence, expressly allowed at 28ch */
+@import url('./tokens.css');
+@import url('./base.css');
+@import url('./shell.css');
+@import url('./status.css');
+@import url('./demo.css');
+@import url('./console.css');
+@import url('./messages.css');
+
+.button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-lg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+}
+.button--primary { background: var(--color-primary); color: var(--color-primary-ink); }
+.button--primary:hover { background: var(--color-ink-2); }
+.button--quiet { background: var(--color-paper-2); color: var(--color-ink); border-color: var(--color-rule-2); }
+.button--quiet:hover { background: var(--color-paper-3); }
+.button:active { transform: translateY(1px); }
+.button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.text-link { display: inline-flex; min-height: 44px; align-items: center; color: var(--color-ink); font-weight: 500; text-decoration-color: var(--color-rule-2); }
+.text-link:hover { text-decoration-color: var(--color-accent); }
+.icon { flex: 0 0 auto; }
+.placeholder-page, .view-error {
+  min-height: calc(100svh - var(--header-height));
+  padding-top: var(--space-3xl);
+  padding-bottom: var(--space-3xl);
+}
+.placeholder-page h1, .view-error h1 { max-width: 18ch; font-size: var(--text-display-s); }
+.placeholder-page p, .view-error p { max-width: 52ch; margin-top: var(--space-lg); color: var(--color-ink-2); }
+.placeholder-page .text-link, .placeholder-page .button, .view-error .button, .view-error .text-link { margin-top: var(--space-lg); margin-right: var(--space-md); }
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: background-color var(--dur-short) linear, color var(--dur-short) linear, border-color var(--dur-short) linear; }
+  .button--primary { transform: none !important; }
+}

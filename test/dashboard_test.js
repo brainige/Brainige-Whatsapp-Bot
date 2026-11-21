@@ -9,6 +9,8 @@
 const http = require("http")
 const net = require("net")
 const os = require("os")
+const fs = require("fs")
+const path = require("path")
 const dashboard = require("../src/dashboard")
 
 let pass = 0, fail = 0
@@ -91,11 +93,13 @@ async function main() {
     /* ── 2. Happy path: token in → server up, /health answers ───────── */
     console.log("\n── 2. Server with a token ──")
     let port
+    const emptyDist = fs.mkdtempSync(path.join(os.tmpdir(), "brainige-dashboard-test-"))
     {
         const d = dashboard.init({
             getToken: () => TOKEN,
             getPort: () => 0,                       // 0 = ephemeral — never a fixed port in tests
             logError: (loc, ctx, err) => captured.push(`[${loc}] ${ctx} ${err ? (err.message || err) : ""}`),
+            distDir: emptyDist,                     // isolated: never depends on the real Phase-1 build
             graceMs: 300
         })
         const r = await d.start()
@@ -148,10 +152,14 @@ async function main() {
         check("POST /health + right token → 405", mna.status === 405)
         check("405 body is bare", mna.body === '{"ok":false,"error":"method_not_allowed"}')
 
-        /* The frontend shell: no dist/ built in Phase 0 → clean 503. */
+        /* The frontend shell: an empty dist → clean 503; a built index → HTML. */
         const idx = await request(port, "/", { headers: authHeaders() })
         check("GET / before the Phase-1 build → 503 frontend_not_built", idx.status === 503)
         check("503 body names the reason, no stack", idx.body === '{"ok":false,"error":"frontend_not_built"}')
+        fs.writeFileSync(path.join(emptyDist, "index.html"), '<!doctype html><html><body><div id="root"></div></body></html>')
+        const builtIdx = await request(port, "/", { headers: authHeaders() })
+        check("GET / with a built frontend → 200", builtIdx.status === 200 && /text\/html/.test(builtIdx.headers["content-type"] || ""))
+        check("built frontend serves its index HTML", builtIdx.body.includes('<div id="root"></div>'))
 
         /* Constant-time compare, exercised through the public surface. */
         const tm = dashboard.tokenMatches
@@ -169,6 +177,7 @@ async function main() {
         check("after stop(): isRunning() false", d.isRunning() === false)
         const afterStop = await portOpen(port)
         check("after stop(): the port is closed again", afterStop === false)
+        fs.rmSync(emptyDist, { recursive: true, force: true })
     }
 
     /* ── 3. Loopback-only: the LAN address must refuse ──────────────── */

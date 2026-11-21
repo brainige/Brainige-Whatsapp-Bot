@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node bot.js",
-    "test": "node test/smoke_test.js && node test/dashboard_test.js && node test/boot_test.js && node test/handler_test.js && node test/workflow_test.js && node test/reliability_test.js && node test/core_test.js && node test/scoring_test.js && node test/hardening_test.js && node test/sendguard_test.js && node test/efficiency_test.js && node test/language_test.js && node test/media_test.js && node test/handoff_test.js && node test/reviewbatch_test.js && node test/misses_test.js",
+    "test": "node test/smoke_test.js && node test/dashboard_test.js && node test/dashboard_frontend_test.mjs && node test/boot_test.js && node test/handler_test.js && node test/workflow_test.js && node test/reliability_test.js && node test/core_test.js && node test/scoring_test.js && node test/hardening_test.js && node test/sendguard_test.js && node test/efficiency_test.js && node test/language_test.js && node test/media_test.js && node test/handoff_test.js && node test/reviewbatch_test.js && node test/misses_test.js",
     "test:reliability": "node test/reliability_test.js",
     "test:core": "node test/core_test.js",
     "test:scoring": "node test/scoring_test.js",
@@ -22,9 +22,13 @@
     "test:reviewbatch": "node test/reviewbatch_test.js",
     "test:misses": "node test/misses_test.js",
     "test:dashboard": "node test/dashboard_test.js",
-    "build:dashboard": "vite build --root src/dashboard/web"
+    "test:dashboard:frontend": "node test/dashboard_frontend_test.mjs",
+    "dev:dashboard": "vite src/dashboard/web --host 127.0.0.1 --port 7801",
+    "build:dashboard": "vite build src/dashboard/web"
   },
   "dependencies": {
+    "@fontsource-variable/host-grotesk": "^5.3.0",
+    "@fontsource/atkinson-hyperlegible-mono": "^5.3.0",
     "axios": "^1.7.0",
     "bad-words": "^3.0.4",
     "better-sqlite3": "^13.0.3",

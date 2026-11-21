@@ -1,0 +1,48 @@
+.status-hero {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: calc(100svh - var(--header-height));
+  padding-top: var(--space-2xl);
+  padding-bottom: var(--space-xl);
+  column-gap: var(--gap-columns);
+}
+.status-copy { position: relative; z-index: var(--z-raised); grid-column: 1 / span 5; align-self: center; padding-bottom: var(--space-2xl); }
+.status-copy h1 { max-width: 9ch; }
+.status-copy .lead { max-width: 32ch; margin-top: var(--space-lg); color: var(--color-ink-2); }
+.status-action { display: flex; margin-top: var(--space-xl); }
+.sample-note { margin-top: var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
+.route-map-region { grid-column: 6 / -1; min-height: 460px; }
+.service-rail {
+  position: relative;
+  z-index: var(--z-raised);
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+.service-item { min-width: 0; padding: var(--space-lg); border-left: 1px solid var(--color-rule); }
+.service-item:first-child { padding-left: 0; border-left: 0; }
+.service-item dt { color: var(--color-muted); font-size: var(--text-sm); }
+.service-item dd { margin: var(--space-2xs) 0 0; font-size: var(--text-section); font-weight: 500; font-variant-numeric: tabular-nums; }
+.service-item .service-detail { margin-top: 0; color: var(--color-muted); font-size: var(--text-xs); font-weight: 400; }
+.service-item--positive > dd:not(.service-detail) { color: var(--color-ok); }
+.service-item--attention > dd:not(.service-detail) { color: var(--color-accent); }
+@media (max-width: 56.25rem) {
+  .status-hero { display: block; min-height: calc(100svh - var(--header-height)); padding-top: var(--space-xl); }
+  .status-copy { max-width: 560px; padding-bottom: 0; }
+  .status-copy h1 { max-width: 10ch; }
+  .route-map-region { min-height: 430px; }
+  .service-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .service-item { padding: var(--space-md); border-top: 1px solid var(--color-rule); }
+  .service-item:first-child { padding-left: var(--space-md); }
+  .service-item:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .service-item:nth-child(-n + 2) { border-top: 0; }
+}
+@media (max-width: 40rem) {
+  .status-copy .lead { max-width: 30ch; }
+  .status-action { margin-top: var(--space-lg); }
+  .route-map-region { min-height: 400px; }
+}
