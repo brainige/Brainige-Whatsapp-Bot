@@ -4,11 +4,12 @@
 ![license](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)
 
-I built this for my business WhatsApp and my personal one. It answers customer questions from a knowledge base that I edit by hand. When the base has no answer, it asks a local LLM and replies with that, and nothing the LLM says enters the base until I have approved it myself.
+Brainige WhatsApp Bot answers customer questions on business and personal WhatsApp accounts. It searches a hand-edited knowledge base first. When no answer matches, it asks a local large language model (LLM). An LLM answer enters the knowledge base only after the owner approves it.
 
-It runs on my own machine, so customer data stays put. WhatsApp Web is driven through headless Chrome, the LLM runs in LM Studio, and the only outside call is the optional VirusTotal link check.
+You run the bot on your own machine, so customer data stays local. It controls WhatsApp Web through headless Chrome and runs the LLM in LM Studio. The optional VirusTotal link check is the only external call.
 
 - [What it does](#what-it-does)
+- [Tech stack](#tech-stack)
 - [Requirements](#requirements)
 - [Setup](#setup)
 - [Running it](#running-it)
@@ -20,39 +21,53 @@ It runs on my own machine, so customer data stays put. WhatsApp Web is driven th
 - [Project layout](#project-layout)
 - [Roadmap](#roadmap)
 - [Community](#community)
+- [Support](#support)
 - [Troubleshooting](#troubleshooting)
 - [Notes and limits](#notes-and-limits)
 - [License](#license)
 
 ## What it does
 
-Here's what it can do, in roughly the order you'll meet each piece:
+The bot includes the following features:
 
-- Hybrid search over the Q&A: word overlap plus embeddings (`all-MiniLM-L6-v2`), so "how much for delivery" finds "delivery charge" even with no shared keywords
-- Replies in the customer's language: English, Bengali and Hindi, including the canned greetings and the I-don't-know fallback line
-- Local LLM fallback: when no stored answer scores high enough, the bot asks LM Studio (any model works, Qwen3-1.7B by default) and caps the reply at three sentences
-- Human review queue: every LLM answer waits for me. The bot never promotes an LLM answer into the knowledge base on its own
-- Human-needed detection: three layers (keyword, context, semantic) catch what a bot shouldn't touch, like complaints, pricing disputes and anything urgent
-- Link safety: every link is checked against VirusTotal, spaced out so the free tier is safe, and written to a local ledger. Customers never see the check. I get the flags, plus an immediate alert for malicious links
-- Send pacing: a jittered 3 to 6 second gap between sends, roughly 25 per hour with a queue, and suppression of identical replies, so a busy hour doesn't look like spam
-- Name-triggered pause: a customer who writes my name pauses auto-replies for that chat, so I can step in
-- Owner handoff: when I reply to a customer from my own phone, the bot stands down for that chat for 30 minutes. Logging and learning keep running, and each reply from me pushes the stand-down further out
-- `!sendmedia` pushes a file (price list, catalogue, sticker) into a chat, through the same size cap and logging as incoming media
-- Miss log: every question the bot could not answer is recorded, so `!misses` tells me what to teach it next
-- Group support: whitelist the groups the bot may answer in, learn from my own replies in those groups, stay silent everywhere else
-- Daily digest at 21:00 covering replies sent, messages skipped, pairs queued for review and send-guard events
-- Everything is logged locally: chats, errors, saved media and the link ledger
+- **Hybrid search:** Combines word overlap with `all-MiniLM-L6-v2` embeddings to match questions without shared keywords
+- **Multilingual replies:** Answers in English, Bengali, and Hindi, including greetings and unknown-answer fallbacks
+- **Local LLM fallback:** Uses any LM Studio model when no stored answer matches, with Qwen3-1.7B as the default and a three-sentence cap
+- **Human review queue:** Requires owner approval before an LLM-generated pair enters the knowledge base
+- **Human-needed detection:** Uses keyword, context, and semantic checks for complaints, pricing disputes, and urgent requests
+- **Link safety:** Checks VirusTotal, records local verdicts, and alerts the owner about malicious links without notifying customers
+- **Send pacing:** Adds 3 to 6 second gaps, queues replies above roughly 25 per hour, and suppresses duplicates
+- **Name-triggered pause:** Pauses auto-replies when a customer addresses the owner by name
+- **Owner handoff:** Pauses replies for 30 minutes after an owner phone reply, while logging and learning continue
+- **Media sending:** Sends files with `!sendmedia` under the same 20 MB cap and logging as incoming media
+- **Miss log:** Records unanswered questions for `!misses`
+- **Group support:** Answers in approved groups and learns only from the owner's replies there
+- **Daily digest:** Summarizes activity at 21:00
+- **Local logging:** Stores chats, errors, saved media, and link verdicts locally
 
-I built all of it for my own shop first. The pieces I would never switch off are the review queue, the miss log and the handoff, because they are what keep a small model from embarrassing me in front of a customer.
+The review queue, miss log, and owner handoff reduce the risk of a small model giving a customer the wrong answer.
+
+## Tech stack
+
+| Part | Tools |
+|---|---|
+| Runtime | Node.js 20 or newer, JavaScript |
+| WhatsApp | `whatsapp-web.js`, headless Chrome |
+| Storage | `better-sqlite3`, JSON files |
+| Knowledge search | `@xenova/transformers`, `all-MiniLM-L6-v2` |
+| Local AI | LM Studio, Qwen3-1.7B by default |
+| Dashboard | React, Vite, and GSAP, currently in development |
 
 ## Requirements
 
-- Node.js 20 or newer (this PC runs 26.13.0)
-- Google Chrome, driven headless by `whatsapp-web.js`
-- LM Studio on the same machine with a model loaded. Any model LM Studio serves works. The default config expects Qwen3-1.7B at `http://127.0.0.1:1234`, and you change it with `LLM_MODEL`
-- A VirusTotal API key if you want link scanning. The free tier is enough. Without one, links are still recorded, just not scanned
+- Install Node.js 20 or newer
+- Install Google Chrome so `whatsapp-web.js` can control it headlessly
+- Install LM Studio on the same machine and load a model. Any model served by LM Studio works. The default config expects Qwen3-1.7B at `http://127.0.0.1:1234`. If you choose another model, set `LLM_MODEL`
+- Add a VirusTotal API key if you want link scanning. You can use the free tier. If you don't add a key, the bot records links without scanning them
 
 ## Setup
+
+Once you've cloned the repository, run these commands in your terminal:
 
 ```bash
 git clone https://github.com/brainige/Brainige-Whatsapp-Bot.git
@@ -61,9 +76,11 @@ npm install
 cp .env.example .env
 ```
 
-On Windows, `better-sqlite3` and `sharp` are native modules and their binaries are only placed by install scripts. If either one fails to load later, run `npm rebuild better-sqlite3` or `npm rebuild sharp`. That's a Windows quirk, not a broken install.
+If `cp` isn't available in your Windows terminal, use your file manager to copy `.env.example` to `.env` instead.
 
-Open `.env` and fill in the values below. Leave the VirusTotal key empty if you don't have one yet.
+On Windows, `better-sqlite3` and `sharp` need native binaries placed by install scripts. If either module doesn't load, run `npm rebuild better-sqlite3` or `npm rebuild sharp`.
+
+Open `.env` and fill in the values below. If you don't have a VirusTotal key yet, leave it empty.
 
 | Variable | What it is |
 |---|---|
@@ -71,24 +88,24 @@ Open `.env` and fill in the values below. Leave the VirusTotal key empty if you 
 | `ADMIN` | Your WhatsApp number in JID form: country code + number + `@c.us`. Commands only work from this number. |
 | `LLM_URL` | Where LM Studio listens. Default `http://127.0.0.1:1234/v1/chat/completions`. |
 | `LLM_MODEL` | Model name as LM Studio shows it. Default `Qwen3-1.7B-Instruct`. |
-| `DASHBOARD_TOKEN` | Bearer token for the local dashboard. Leave it empty and the dashboard stays off while the bot runs normally. |
+| `DASHBOARD_TOKEN` | Bearer token for the local dashboard. Leave it empty to keep the dashboard off while the bot runs normally. |
 | `DASHBOARD_PORT` | Port for the dashboard. Default `7800`. |
-| `BRAND_NAME` | Product name on the terminal banner, `!help` and the daily digest. Default `Brainige`. |
-| `OWNER_DISPLAY` | How you appear in customer replies. Default `Utsab/Avi`. |
-| `OWNER_DISPLAY_BN` / `OWNER_DISPLAY_HI` | The same for Bengali and Hindi replies. Default `উৎসব/আভি` / `उत्सब/अवि`. |
-| `PAUSE_NAMES` | Words that pause replies when a customer addresses you by name, comma separated. Default `utsab,avi`. An empty value turns the trigger off. |
+| `BRAND_NAME` | Product name on the terminal banner, `!help`, and the daily digest. Default `Brainige`. |
+| `OWNER_DISPLAY` | Your name in customer replies. Default `Utsab/Avi`. |
+| `OWNER_DISPLAY_BN` / `OWNER_DISPLAY_HI` | Your name in Bengali and Hindi replies. Default `উৎসব/আভি` / `उत्सब/अवि`. |
+| `PAUSE_NAMES` | Comma-separated names that pause replies when a customer addresses you. Default `utsab,avi`. An empty value turns the trigger off. |
 
 ## Running it
 
-Before I run `npm start`, I check that LM Studio has a model loaded and that Chrome is installed. Then:
+Before you start the bot, load a model in LM Studio and install Chrome.
 
 1. Run `npm start`.
-2. A QR code prints in the terminal. I scan it from my phone under WhatsApp, then Linked devices, then Link a device. I only do this once.
-3. The session is saved in `.wwebjs_auth/`, so I never scan again. When I want to log out, I stop the bot and delete that folder.
+2. Scan the QR code shown in the terminal. Open WhatsApp on your phone, then go to **Linked devices** and **Link a device**. You'll only need to do this once.
+3. Keep the session in `.wwebjs_auth/`. You won't need another scan. When you want to log out, stop the bot and delete that folder.
 
 ## The knowledge base
 
-`memory/knowledge.json` is the single source of truth and it is meant to be hand-edited. I edit mine by hand, and so can you:
+Edit `memory/knowledge.json` by hand. It's the single source of truth:
 
 ```json
 {
@@ -98,81 +115,87 @@ Before I run `npm start`, I check that LM Studio has a model loaded and that Chr
 }
 ```
 
-`knowledge.db` is only a rebuild cache of that file, so you'll never edit it by hand. The bot rebuilds it at startup when the JSON changes, checking a content hash, so a warm restart costs milliseconds. It doesn't edit the JSON for you.
+Don't edit `knowledge.db`. It's only a rebuild cache of the JSON file. At startup, the bot checks a content hash and rebuilds the database when the JSON changes. A warm restart takes milliseconds. The bot doesn't edit the JSON for you.
 
-There is a `knowledge.example.json` in the repo root with three sample pairs. Copy it to `memory/knowledge.json` if you'd rather start from something than from an empty base.
+After you edit the file by hand, you'll need to restart the bot to rebuild the cache and search your new pairs.
 
-Unknown questions fall through to the LLM, and the LLM's answers wait in the review queue.
+You'll find `knowledge.example.json` in the repository root. It contains three sample pairs. Copy it to `memory/knowledge.json` if you want examples instead of an empty base.
+
+Unknown questions go to the LLM. Their answers wait in the review queue before they can enter the knowledge base.
 
 ## Reviewing what the LLM wants to learn
 
-Send these from your own WhatsApp number, in any chat. I review every pair myself before it becomes an answer:
+Send these commands from your admin WhatsApp number in any chat. Review each pair before you approve it:
 
 - `!review` shows the next queued pair
-- `!approve` commits it into the knowledge base
+- `!approve` adds it to the knowledge base
 - `!reject` discards it
 
-A pair is only queued once. Duplicates of a pending question are ignored.
+The queue ignores duplicate pending questions, so you won't review the same pair twice.
 
-When a backlog builds up: `!review 5` lists the next five pairs numbered 1 to 5, and `!approve 1-5` (or `!reject 1-5`, or a list like `1,3`) acts on exactly those. There's no "approve everything" on purpose. One wrong tap must never dump a hundred unreviewed pairs into the brain.
+Use `!review 5` when a backlog builds up. You'll see the next five pairs numbered from 1 to 5. Run `!approve 1-5` or `!reject 1-5` on that batch. You can also select entries with a list like `1,3`.
+
+There's no "approve everything" command. This prevents one wrong tap from adding a hundred unreviewed pairs to the knowledge base.
 
 ## Admin commands
 
-Send from the admin number, in any chat:
+Send these commands from the admin number in any chat:
 
 | Command | What it does |
 |---|---|
-| `!help` | Lists everything |
-| `!pause` / `!resume` | Pause and resume replies globally |
+| `!help` | List all commands |
+| `!pause` / `!resume` | Pause or resume replies globally |
 | `!train q\|a` | Add a Q&A pair directly |
 | `!forget q` | Remove a pair |
 | `!correct old\|new` | Change the reply of an existing pair |
 | `!blacklist n` / `!whitelist n` | Block or allow a number |
 | `!group_allow [id]` / `!group_block [id]` | Manage which groups the bot answers in |
-| `!learning on/off` | Toggle learning entirely |
+| `!learning on/off` | Turn learning on or off |
 | `!export_kb` | Export the knowledge base |
 | `!review N` / `!approve 1-3` / `!reject 1-3` | Review and act on a numbered batch of queued pairs |
-| `!misses [N]` | The questions the bot could not answer, most frequent first |
-| `!sendmedia <jid> <path> [caption]` | Send a file to a chat. Replying to a customer's message with `!sendmedia <path> [caption]` sends it there |
+| `!misses [N]` | List unanswered questions, most frequent first |
+| `!sendmedia <jid> <path> [caption]` | Send a file to a chat. Reply to a customer's message with `!sendmedia <path> [caption]` to send it there |
 | `!backup` | Snapshot the state files |
-| `!stats` | Counters since the last restart |
-| `!quiet on/off` | Hide the per-message decision line in the terminal |
+| `!stats` | Show counters since the last restart |
+| `!quiet on/off` | Hide or show the per-message decision line in the terminal |
 | `!digest` | Print today's digest now |
-| `!dnd_set 22:00 08:00` | Quiet hours |
+| `!dnd_set 22:00 08:00` | Set quiet hours |
 
 ## The dashboard
 
-A local web dashboard is being built in phases. What exists today is the server, and it's deliberately boring:
+The local web dashboard is still under development. The current codebase includes only its server:
 
-- It lives inside the bot process and binds to `127.0.0.1` only, so nothing on your network can reach it
-- Every route needs an `Authorization: Bearer <token>` header. A missing header, a wrong scheme or a wrong token all get the same bare `401` with no hints
-- If `DASHBOARD_TOKEN` is empty, or the port is taken, the server refuses to start and prints one loud line. The bot carries on either way
-- I keep the dashboard switched off unless I'm actively debugging something
-- Shutdown closes the listener, waits a short grace window for in-flight requests, then force-closes stragglers, so an abandoned browser tab can never hang a Ctrl+C
+- It runs inside the bot process and binds to `127.0.0.1` only. Other devices on your network can't reach it
+- Every route requires an `Authorization: Bearer YOUR_DASHBOARD_TOKEN` header. A missing header, wrong scheme, or wrong token returns the same bare `401`
+- If you leave `DASHBOARD_TOKEN` empty or choose a busy port, the server won't start. It prints one clear error, and your bot continues running
+- Shutdown closes the listener and allows a short grace period for active requests. It then force-closes remaining connections so a browser tab can't hang Ctrl+C
 
-The only routes today are `GET /health` and `GET /`. `/health` answers with uptime, and `/` returns a clean `503` until the frontend is built with `npm run build:dashboard`. The chat, VirusTotal and log screens come next.
+The only routes are `GET /health` and `GET /`. The health route returns uptime. You'll get a `503` from `/` because the frontend is not part of this release yet. Chat, VirusTotal, and log screens are planned next.
 
-Try it once the bot is running:
+You can try the health route while the bot is running. Replace the placeholder with your token:
 
 ```bash
-curl -H "Authorization: Bearer $DASHBOARD_TOKEN" http://127.0.0.1:7800/health
+curl -H "Authorization: Bearer YOUR_DASHBOARD_TOKEN" http://127.0.0.1:7800/health
 ```
 
-The screens themselves arrive in 6.6.0.
+Version 6.6.0 will add the dashboard screens.
 
 ## Testing
+
+You can run the full suite with:
 
 ```bash
 npm test
 ```
 
-558 checks across fifteen suites, plus a boot suite that starts the real `bot.js` with stubbed WhatsApp and proves a clean Ctrl+C shutdown. Everything runs offline: WhatsApp, the network and the embedding model are stubbed, the suite finishes in seconds, and it never touches your real session or data. It snapshots and restores every project file it touches, so a test run leaves the project exactly as it found it.
+The test command runs 16 suites, including a boot suite. The boot suite starts the real `bot.js` with stubbed WhatsApp and checks a clean Ctrl+C shutdown.
+
+The suites run offline. They use test data, not your real WhatsApp session. WhatsApp, network access, and the embedding model are stubbed. Each suite snapshots and restores the project files it touches.
 
 ## Project layout
 
 ```
 bot.js                entry point: client setup, boot order, graceful shutdown
-botV6.5.js            the original single file, kept untouched. npm run start:legacy runs it
 src/
   config.js           every tunable number in one place
   handler.js          message pipeline: intake, media, links, search, decision, send
@@ -187,46 +210,50 @@ src/
   admin.js            the self-chat command surface
   ...                 tracking, digest, notify, pause, reconnect, logging, db, text,
                       state, util, embedCache, handoff, mediaSend, misses
-test/                 the sixteen suites plus their stubs
+test/                 the 16 suites plus their stubs
 ```
 
 ## Roadmap
 
-- **6.6.0**: the dashboard screens themselves (live chat, link scan table, logs), then the admin controls
-- Later: the Baileys transport migration (currently postponed), voice and OCR, scheduled broadcasts, group moderation
-- Not planned for now: cloud LLMs, a plugin system, multi-session
+- **6.6.0** will add dashboard screens for live chat, link scans, and logs, followed by admin controls.
+- **Later versions** may cover the postponed Baileys migration, voice messages, text extraction from images, scheduled broadcasts, and group moderation.
+- **Cloud LLMs, a plugin system, and multi-session support** aren't planned for now.
 
-The full plan lives in `Bot Reviews/plans/web-dashboard-implementation-plan.md` in my working copy, and it is not part of this repo.
+The full dashboard plan isn't included in this repository.
 
 ## Community
 
-This is a small personal project and I'm its only maintainer, so please read these before you open anything.
+This personal project has one maintainer. Please read these documents before opening an issue or pull request:
 
-- [Code of Conduct](CODE_OF_CONDUCT.md) how I expect people to treat each other here, and what I can honestly promise back
-- [Security Policy](SECURITY.md) how to report a vulnerability privately
-- [Changelog](CHANGELOG.md) what changed in each version
+- [Code of Conduct](CODE_OF_CONDUCT.md): Community expectations and enforcement
+- [Security Policy](SECURITY.md): Private vulnerability reporting
+- [Changelog](CHANGELOG.md): Changes by version
+
+## Support
+
+If you find a bug or need a feature, use [GitHub Issues](https://github.com/brainige/Brainige-Whatsapp-Bot/issues). Please don't use public issues for security reports. Follow the [Security Policy](SECURITY.md) instead.
 
 ## Troubleshooting
 
-**`better-sqlite3` or `sharp` won't load after install.** Run `npm rebuild better-sqlite3` or `npm rebuild sharp`. Native binaries only get placed by install scripts.
+**`better-sqlite3` or `sharp` won't load after install.** Run `npm rebuild better-sqlite3` or `npm rebuild sharp`. Install scripts place the required native binaries.
 
-**"Failed to load embedding model" and the bot still answers.** The same cause as above, and it's `sharp` that breaks. Without the model, semantic search quietly falls back to word overlap, so answers get weaker before anything looks broken. Fix it with `npm rebuild sharp` and restart.
+**The embedding model won't load, but the bot still answers.** Repair `sharp` with `npm rebuild sharp`, then restart. Without the model, semantic search falls back to word overlap. Your answers can get weaker without an obvious failure.
 
-**No QR code appears.** Make sure Chrome is installed and that nothing else is using the default session folder. Stop the bot, delete `.wwebjs_auth/`, and start again.
+**You don't see a QR code.** Check that Chrome is installed and no other process is using the default session folder. Stop the bot, delete `.wwebjs_auth/`, and start again.
 
-**The dashboard prints DISABLED.** That's the fail-closed path working. Set `DASHBOARD_TOKEN` and `DASHBOARD_PORT` in `.env`, or leave them empty and run without the dashboard.
+**The dashboard prints `DISABLED`.** Set `DASHBOARD_TOKEN` and `DASHBOARD_PORT` in `.env`. You can also leave them empty and run without the dashboard.
 
-**`/` returns `503 frontend_not_built`.** The frontend isn't built yet. Run `npm run build:dashboard` when the UI lands.
+**`/` returns `503 frontend_not_built`.** The frontend is not included in this release yet.
 
-**A customer gets no reply at all.** That's usually the human-needed path doing its job. Check `logs/human_needed.txt` and `logs/errors.txt` before assuming a bug.
+**A customer gets no reply.** Check `logs/human_needed.txt` and `logs/errors.txt`. The human-needed path may have paused the reply deliberately.
 
 ## Notes and limits
 
-- The bot is only as good as your knowledge base plus a 1.7B model, and small models give generic answers sometimes. The review queue is the guard for exactly that. I read the miss log most weeks to see what my customers asked that the bot couldn't answer, and that's usually what I add next.
-- Customer replies keep the `QUICK REPLY : ` prefix. That's a deliberate choice, because it helps me tell the bot's replies from mine. It's not a bug.
-- `memory/`, `logs/`, `media/` and `llm_context/` hold data. The bot creates them on first run and they are gitignored.
-- The bot sends from a WhatsApp Web session, which is against the terms of the consumer app. Use a number you can afford to lose, and don't blast volume at it. The send guard helps, but the risk is yours.
-- If you enable the dashboard, keep `DASHBOARD_TOKEN` long and random. It's the only thing standing between your logs and anyone who can reach the port.
+- The bot depends on your knowledge base and a small local model. Small models sometimes give generic or wrong answers. Review the miss log regularly and add the answers your customers need.
+- Customer replies keep the `QUICK REPLY : ` prefix. It distinguishes bot replies from owner replies and is deliberate.
+- The `memory/`, `logs/`, `media/`, and `llm_context/` directories hold data. The bot creates them on first run, and Git ignores them.
+- The bot sends through a WhatsApp Web session, which is against the consumer app's terms. Use a number you can afford to lose, and avoid high message volumes. The send guard reduces risk but doesn't remove it.
+- If you enable the dashboard, you'll need a long, random `DASHBOARD_TOKEN`. It protects your logs from anyone who can reach the port.
 
 ## License
 

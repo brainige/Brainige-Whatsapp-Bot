@@ -82,15 +82,15 @@ For answers to common questions about this code of conduct, see the FAQ at [http
 [FAQ]: https://www.contributor-covenant.org/faq
 [translations]: https://www.contributor-covenant.org/translations
 
-## A note on how this actually runs here
+## How enforcement works here
 
-The text above is the Contributor Covenant, kept word for word so it stays recognised. This part is mine, and it is the honest version.
+The text above is Contributor Covenant 2.1, kept word for word. This section explains how the project applies it.
 
-I'm one person. I built this bot for a family business, I'm a student, and I'm the only maintainer. There's no committee and nobody paid to moderate, so here is what you can really expect.
+The project has one maintainer, a student who built the bot for a family business. We don't have a committee or a paid moderation team. Here's what you can expect from us:
 
-- **Where to report.** Email me at brainigemee@gmail.com. If you would rather not use email, GitHub's private reporting on the Security tab also reaches me, and it stays private.
-- **How fast.** I read every report and reply when I can. Realistically that is **2 to 3 weeks**, longer during exams or when the shop is busy. I'm not promising 24 hours, because I'd break that promise.
-- **Who decides.** I do, alone. If a report ever involves me directly, I'll say so and step back from deciding it.
-- **Privacy.** Reports stay between us. I don't publish your name or your message, and I don't retaliate. If you want to be credited publicly, tell me and I will credit you.
-- **No bounty.** There's no money and no reward. Reports are still worth sending, and I'm grateful for them.
-- **Appeals.** If you think I got a decision wrong, reply to the same address and say so. I'll re-read it with fresh eyes.
+- **Where to report.** You can email us at brainigemee@gmail.com. You can also use private reporting on the repository's **Security** tab. Both routes reach us privately.
+- **Response time.** We read every report and aim to reply within **2 to 3 weeks**. Exams or business work may delay us. We can't promise a 24-hour response.
+- **Who decides.** The maintainer decides each case alone. If a report involves them, they will disclose the conflict and step back from the decision.
+- **Privacy.** We keep your report private, and we don't retaliate. We won't publish your name or message without your permission. Tell us if you want public credit.
+- **No bounty.** We don't offer money or rewards, but we still welcome your report and appreciate the help.
+- **Appeals.** If you think we got a decision wrong, reply to the same address. We'll review your report and our decision again.

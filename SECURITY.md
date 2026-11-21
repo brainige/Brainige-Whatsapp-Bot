@@ -1,74 +1,76 @@
 # Security Policy
 
-This bot answers real customers on a real WhatsApp number and keeps their messages, files and photos on one machine. That is why I would rather hear about a problem quietly than read about it in a public issue.
+Brainige WhatsApp Bot answers real customer questions and stores private messages, files, and photos on one machine, so security reports need careful handling. Please report problems privately to protect users before a fix is available.
 
 ## Supported versions
 
 | Version | Security fixes |
 |---|---|
 | 6.5.x | Yes |
-| Anything older | No |
+| Older than 6.5.x | No |
 
-Only the latest 6.5.x line gets fixes. If you are on an older copy, update first and check whether the problem is still there.
+Only the latest 6.5.x release receives security fixes, so update older versions and check whether the problem remains before reporting it.
 
 ## How to report a vulnerability
 
-Please do **not** open a public issue, a pull request, or a discussion for a security problem. Public reports put every user of this bot at risk before a fix exists.
+Please don't open a public issue, pull request, or discussion for a security problem. Public reports can expose users before a fix exists. Thank you for helping protect the project's users.
 
-Two private ways to reach me:
+Use one of these private routes:
 
-1. **Email**: brainigemee@gmail.com
-2. **GitHub private vulnerability reporting**: open the repository, go to the **Security** tab, and click **Report a vulnerability**. If that button is not there, the repo owner needs to switch it on under Settings, then Code security. In that case email me.
+1. **Email:** Send your report to brainigemee@gmail.com.
+2. **GitHub private vulnerability reporting:** Open the repository's **Security** tab and select **Report a vulnerability**. If that option is unavailable, use email instead.
 
-Either route reaches only me.
+Both email and GitHub private reports reach only the maintainer and remain private until disclosure.
 
-## What to put in the report
+## What to include in the report
 
-The more of this you include, the faster I can fix it:
+Include as much of the following as you can:
 
-- Which version you are on (`package.json` shows it, currently 6.5.0)
-- Which file, command or endpoint behaves badly
-- Steps to reproduce it, in order
-- What an attacker could actually do with it, in plain words
+- The affected version from `package.json`, so the maintainer can test the same release
+- The file, command, or endpoint involved
+- Numbered steps to reproduce the problem, including any configuration that changes the result
+- The practical impact in plain language, including what an attacker could read, change, or send
+- A safe proof of concept with customer data and secrets removed, if available
 - A suggested fix, if you have one
 
-Please do not send real API keys, tokens, or a copy of a customer's `.env`. A description is enough. If you must show a secret, blank out the value first.
+Please don't send real API keys, tokens, passwords, or `.env` files. Describe the problem without secret values, and remove or mask any secrets in your examples.
 
 ## What happens after you report
 
-1. I read it and reply to you. Realistically **2 to 3 weeks**. I'm a student and this is a side project, so I won't promise 24 hours I can't keep.
-2. If I agree it is a vulnerability, I fix it, run the test suite, and ship it in the next release. I will tell you when it is out.
-3. If I decide it is out of scope or not a vulnerability, I will tell you why rather than going silent.
-4. You get credited in the release notes unless you ask to stay anonymous.
+1. We read every report and aim to reply within **2 to 3 weeks**. The project has one student maintainer, so we can't promise a 24-hour response.
+2. We investigate each report to confirm whether it describes a vulnerability that affects this project.
+3. We fix confirmed vulnerabilities, run relevant tests, and ship each fix in a release. We'll tell you when it's available.
+4. If we reject a report, we'll explain why.
+5. We'll credit you in the release notes unless you ask to remain anonymous.
 
-I aim to keep details private until a fix is available. After that I am happy for the write-up to be public.
+We keep report details private until a fix is available, and then you may publish a write-up. Please coordinate the disclosure date with us.
 
-## What counts as in scope
+## What is in scope
 
-- This repository's code: `bot.js`, everything in `src/`, and the test suites
-- The local dashboard server, its token check, and what it exposes
-- How the bot stores customer data on disk, and how it handles files, links and media
-- Anything that lets someone read, change, or send messages they should not be able to
+- Code in `bot.js`, `src/`, and the test suites
+- The local dashboard server, its token check, and exposed data
+- Local storage of customer messages, files, links, media, and logs
+- Flaws that let someone read, change, or send messages without permission
 
 ## What is out of scope
 
-- WhatsApp's own servers, and the `whatsapp-web.js` library itself. Report those upstream to Meta and to the library maintainer.
-- Third-party services the bot calls: LM Studio, VirusTotal, and the embedding model.
-- Anything that needs my phone, my `.env`, or physical access to the machine the bot runs on.
-- Flooding a service I do not control to slow it down.
-- Problems already listed as known limits in the README, unless the report shows they are worse than I thought.
+- Report WhatsApp server or `whatsapp-web.js` issues upstream to Meta or the library maintainer.
+- Report flaws in LM Studio, VirusTotal, or the embedding model to their respective projects.
+- Don't report attacks that require the maintainer's phone, `.env`, or physical access to the machine.
+- Don't flood third-party services or perform denial-of-service tests against them.
+- Don't report known limits from the README unless you can show additional impact.
 
-## Safe harbour
+## Safe harbor
 
-If you report in good faith, stay inside this policy, and give me a reasonable chance to fix things, I will not take legal action against you. Research on your own machine and your own WhatsApp number is fine. Do not test against other people's accounts or data.
+We won't take legal action against you if you report in good faith, follow this policy, and allow reasonable time for a fix. Research only on your own machine and your own WhatsApp number. Never test against other people's accounts or data.
 
 ## No bounty
 
-There is no bug bounty and no payment. I am one person running a small business bot, so there is nothing to pay from. Reports are still welcome and I read every one.
+We don't offer a bug bounty or payment because one maintainer runs this small business bot. We still welcome your reports and read every one.
 
-## How the bot handles data, so you can judge the risk
+## How the bot handles data
 
-- It runs on one machine and listens on `127.0.0.1` only. The dashboard server refuses every request without a valid token and never binds to the network.
-- Customer messages, saved media, logs and the knowledge base stay local, in `memory/`, `logs/` and `media/`. Nothing is uploaded anywhere.
-- The only outside call is the optional VirusTotal link check, and only when `VT_API_KEY` is set in `.env`. It's read from `.env` and never printed.
-- There is no analytics, no telemetry, and no cloud account of any kind.
+- The bot runs on one machine, and the dashboard binds only to `127.0.0.1` while refusing requests without a valid token.
+- Customer messages, saved media, logs, and the knowledge base stay local in `memory/`, `logs/`, and `media/`, and the bot doesn't upload these files.
+- The optional VirusTotal check is the only external call. VirusTotal receives submitted URLs only when `VT_API_KEY` is set, and the bot never prints your API key.
+- The bot has no analytics, telemetry, or cloud account.
